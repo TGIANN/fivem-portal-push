@@ -201,8 +201,8 @@ export default function SettingsButton({ config, onConfig }: { config: AppConfig
                 boxClassName="bg-elevated"
                 footer={
                   update.discordMode === 'bot'
-                    ? 'The bot needs to see the channel and send messages there. It also lists the server roles you can tag.'
-                    : 'A webhook only posts. To tag a role, paste its ID on the script, or use a bot to pick from the role list.'
+                    ? 'The bot needs to see the channel and send messages there. It also lists the server roles you can tag. @here and @everyone show up in the tag list only when they are allowed here.'
+                    : 'A webhook only posts. To tag a role, paste its ID on the script, or use a bot to pick from the role list. @here and @everyone show up on the script only when they are allowed here.'
                 }
               >
                 <Row>
@@ -226,6 +226,20 @@ export default function SettingsButton({ config, onConfig }: { config: AppConfig
                     <TextRow label="Channel ID" value={update.discordChannel} placeholder="Right click the channel, Copy Channel ID" onSave={(v) => setUpdate({ discordChannel: v })} />
                   </>
                 )}
+                <Row>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-body">Allow @here</span>
+                    <span className="block text-caption text-label-2">Pings every online member of the server</span>
+                  </span>
+                  <Switch checked={update.allowHere} onCheckedChange={(v) => setUpdate({ allowHere: v })} label="Allow @here" />
+                </Row>
+                <Row>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-body">Allow @everyone</span>
+                    <span className="block text-caption text-label-2">Pings every member of the server</span>
+                  </span>
+                  <Switch checked={update.allowEveryone} onCheckedChange={(v) => setUpdate({ allowEveryone: v })} label="Allow @everyone" />
+                </Row>
                 <TestRow key={update.discordMode} target="discord" ready={discordReady} />
               </Group>
 

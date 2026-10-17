@@ -2,6 +2,12 @@
 
 All notable changes to FiveM Portal Push. Versions follow [semantic versioning](https://semver.org/); the newest is on top.
 
+## Unreleased
+
+### Added
+
+- **Allow @here and @everyone** switches in Settings, Discord. Both are off by default. When one is on, it shows up in the script's tag list (bot mode) or as a button next to the role ID (webhook mode), and the post pings with it. While a switch is off, the app refuses to send that tag.
+
 ## 1.1.3 - 2026-10-16
 
 ### Security

@@ -49,7 +49,10 @@ export interface UpdateSettings {
   tebexToken: string
   discordMode: DiscordMode
   discordChannel: string
+  /** A role ID, or "here" / "everyone" when those are allowed below. */
   roleId: string | null
+  allowHere: boolean
+  allowEveryone: boolean
 }
 
 export interface TebexPackage {

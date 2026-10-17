@@ -33,7 +33,7 @@ const config: AppConfig = {
   gitDefault: false,
   zipIgnore: ['*.psd'],
   packages: {},
-  update: { apiDefault: true, discordDefault: true, apiUrl: 'https://tgiann.com/api/updates', tebexToken: 'demo', discordMode: 'bot', discordChannel: '813192868906532905', roleId: '2' },
+  update: { apiDefault: true, discordDefault: true, apiUrl: 'https://tgiann.com/api/updates', tebexToken: 'demo', discordMode: 'bot', discordChannel: '813192868906532905', roleId: '1133238864895550002', allowHere: true, allowEveryone: false },
   secrets: { apiKey: true, botToken: true, webhookUrl: false }
 }
 
@@ -43,9 +43,9 @@ const tebexDemo: TebexPackage[] = scripts.map(([name], i) => ({
 }))
 
 const rolesDemo: DiscordRole[] = [
-  { id: '1', name: 'Customer', color: 0x36ff9f },
-  { id: '2', name: 'Update ping', color: 0xff9230 },
-  { id: '3', name: 'Beta testers', color: 0x5865f2 }
+  { id: '1133238864895550001', name: 'Customer', color: 0x36ff9f },
+  { id: '1133238864895550002', name: 'Update ping', color: 0xff9230 },
+  { id: '1133238864895550003', name: 'Beta testers', color: 0x5865f2 }
 ]
 
 const versionsFor = (name: string): PortalAssetDetail['versions'] => {

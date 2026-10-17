@@ -279,7 +279,7 @@ The update API only receives the requests above. For completeness, this is all t
 | Where | When | What |
 | --- | --- | --- |
 | Your update API | API switch on | The requests on this page. |
-| Discord | Discord switch on | One message: the role mention (if picked), an embed with the package name (or script name), `v<version>`, the notes and your `url`/`linkLabel` if the API returned them, a second embed with the changed files as a `diff` block, and the images as attachments. Sent with your webhook, or with your bot to the channel in Settings. |
+| Discord | Discord switch on | One message: the role mention, or `@here` / `@everyone` when allowed in Settings (if picked), an embed with the package name (or script name), `v<version>`, the notes and your `url`/`linkLabel` if the API returned them, a second embed with the changed files as a `diff` block, and the images as attachments. Sent with your webhook, or with your bot to the channel in Settings. |
 | Discord API | Bot mode, role picker or Test connection | Reads the channel to find its server, then the server's role list. Nothing is written. |
 | Tebex Headless API | Package picker or Test connection | Reads your package list (`id`, `name`) with the public token. Nothing is written. |
 

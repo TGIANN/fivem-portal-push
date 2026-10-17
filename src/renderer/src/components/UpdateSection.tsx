@@ -136,6 +136,21 @@ function PickerList<T>({
   )
 }
 
+type MassTag = 'here' | 'everyone'
+
+/** The tag that can really be sent: @here / @everyone only while Settings allow them, roles only with a numeric ID. */
+export function usableTag(config: AppConfig, tag: string | null): string | null {
+  if (tag === 'here') return config.update.allowHere ? tag : null
+  if (tag === 'everyone') return config.update.allowEveryone ? tag : null
+  return tag && /^\d{5,25}$/.test(tag) ? tag : null
+}
+
+function massTags(config: AppConfig): MassTag[] {
+  return (['here', 'everyone'] as const).filter((t) => (t === 'here' ? config.update.allowHere : config.update.allowEveryone))
+}
+
+const isMassTag = (tag: string | null): tag is MassTag => tag === 'here' || tag === 'everyone'
+
 function roleColor(color: number): string {
   return color ? `#${color.toString(16).padStart(6, '0')}` : 'rgba(235,235,245,0.3)'
 }
@@ -181,7 +196,14 @@ export default function UpdateSection({ scriptName, assetName, config, draft, di
     }
   }
 
-  const role = roles.data?.find((r) => r.id === draft.roleId) ?? null
+  const tag = usableTag(config, draft.roleId)
+  const role = roles.data?.find((r) => r.id === tag) ?? null
+  const mass = massTags(config)
+  const itemClass = 'flex h-8 cursor-pointer items-center gap-2.5 rounded-md px-2.5 data-[selected=true]:bg-fill'
+  const pickTag = (value: string | null) => {
+    onDraft({ roleId: value })
+    setRoleOpen(false)
+  }
   const apiHost = hostOf(config.update.apiUrl)
 
   const footer = imageError ? (
@@ -258,8 +280,9 @@ export default function UpdateSection({ scriptName, assetName, config, draft, di
                 <Popover.Trigger disabled={disabled} className={cn(triggerClass, 'relative before:absolute before:top-0 before:right-0 before:left-4 before:h-px before:bg-separator')}>
                   <span className="text-body">Tag role</span>
                   <span className="ml-auto flex min-w-0 items-center gap-2">
-                    {draft.roleId && <span className="size-2.5 shrink-0 rounded-full" style={{ background: roleColor(role?.color ?? 0) }} />}
-                    <span className={draft.roleId ? 'truncate text-label-2' : 'text-label-3'}>{draft.roleId ? (role ? `@${role.name}` : draft.roleId) : 'No tag'}</span>
+                    {tag && !isMassTag(tag) && <span className="size-2.5 shrink-0 rounded-full" style={{ background: roleColor(role?.color ?? 0) }} />}
+                    {isMassTag(tag) && <Tag tone="orange">Mass ping</Tag>}
+                    <span className={tag ? 'truncate text-label-2' : 'text-label-3'}>{tag ? (isMassTag(tag) ? `@${tag}` : role ? `@${role.name}` : tag) : 'No tag'}</span>
                     <FontAwesomeIcon icon={faChevronDown} className="text-caption text-label-3" />
                   </span>
                 </Popover.Trigger>
@@ -273,23 +296,22 @@ export default function UpdateSection({ scriptName, assetName, config, draft, di
                       empty="No roles match this search"
                       keyOf={(r) => r.id}
                       search={(r) => r.name}
-                      selected={draft.roleId}
-                      onPick={(r) => {
-                        onDraft({ roleId: r.id })
-                        setRoleOpen(false)
-                      }}
+                      selected={tag}
+                      onPick={(r) => pickTag(r.id)}
                       extra={
-                        <Command.Item
-                          value="none"
-                          onSelect={() => {
-                            onDraft({ roleId: null })
-                            setRoleOpen(false)
-                          }}
-                          className="flex h-8 cursor-pointer items-center gap-2.5 rounded-md px-2.5 text-label-2 data-[selected=true]:bg-fill"
-                        >
-                          <span className="w-3.5 text-caption text-accent">{!draft.roleId && <FontAwesomeIcon icon={faCheck} />}</span>
-                          No tag
-                        </Command.Item>
+                        <>
+                          <Command.Item value="none" onSelect={() => pickTag(null)} className={cn(itemClass, 'text-label-2')}>
+                            <span className="w-3.5 text-caption text-accent">{!tag && <FontAwesomeIcon icon={faCheck} />}</span>
+                            No tag
+                          </Command.Item>
+                          {mass.map((t) => (
+                            <Command.Item key={t} value={t} onSelect={() => pickTag(t)} className={itemClass}>
+                              <span className="w-3.5 text-caption text-accent">{tag === t && <FontAwesomeIcon icon={faCheck} />}</span>
+                              <span className="min-w-0 flex-1 truncate text-body">@{t}</span>
+                              <span className="text-caption text-label-3">{t === 'here' ? 'Online members' : 'Every member'}</span>
+                            </Command.Item>
+                          ))}
+                        </>
                       }
                       render={(r) => (
                         <>
@@ -304,14 +326,30 @@ export default function UpdateSection({ scriptName, assetName, config, draft, di
             ) : (
               <Row>
                 <span className="text-body">Tag role</span>
-                <input
-                  value={draft.roleId ?? ''}
-                  onChange={(e) => onDraft({ roleId: e.target.value.replace(/\D/g, '') || null })}
-                  placeholder="Role ID, empty for no tag"
-                  disabled={disabled}
-                  spellCheck={false}
-                  className="ml-auto h-8 w-60 rounded-md bg-fill px-2.5 font-mono text-footnote outline-none placeholder:font-sans placeholder:text-label-3 focus:[box-shadow:0_0_0_2px_rgba(54,255,159,0.5)]"
-                />
+                <span className="ml-auto flex items-center gap-1.5">
+                  {mass.map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => onDraft({ roleId: tag === t ? null : t })}
+                      disabled={disabled}
+                      aria-pressed={tag === t}
+                      className={cn(
+                        'h-8 cursor-pointer rounded-md px-2.5 font-mono text-footnote transition-colors duration-150 disabled:opacity-40',
+                        tag === t ? 'bg-orange/15 text-orange' : 'bg-fill text-label-2 hover:text-label'
+                      )}
+                    >
+                      @{t}
+                    </button>
+                  ))}
+                  <input
+                    value={isMassTag(tag) ? '' : (draft.roleId ?? '')}
+                    onChange={(e) => onDraft({ roleId: e.target.value.replace(/\D/g, '') || null })}
+                    placeholder="Role ID, empty for no tag"
+                    disabled={disabled}
+                    spellCheck={false}
+                    className="h-8 w-56 rounded-md bg-fill px-2.5 font-mono text-footnote outline-none placeholder:font-sans placeholder:text-label-3 focus:[box-shadow:0_0_0_2px_rgba(54,255,159,0.5)]"
+                  />
+                </span>
               </Row>
             ))}
 

@@ -127,8 +127,22 @@ interface Link {
   label: string | null
 }
 
+/**
+ * The ping at the top of the post. @here and @everyone only go out when they are
+ * turned on in Settings; a role needs a numeric ID. Embeds never ping, so the
+ * notes can not mention anyone.
+ */
+function mention(tag: string | null): { content: string; allowed_mentions: { parse: string[]; roles: string[] } } {
+  const { allowHere, allowEveryone } = getConfig().update
+  if (tag === 'here' || tag === 'everyone') {
+    if (!(tag === 'here' ? allowHere : allowEveryone)) throw new Error(`@${tag} is turned off in Settings, Discord.`)
+    return { content: `@${tag}`, allowed_mentions: { parse: ['everyone'], roles: [] } }
+  }
+  if (tag && /^\d{5,25}$/.test(tag)) return { content: `<@&${tag}>`, allowed_mentions: { parse: [], roles: [tag] } }
+  return { content: '', allowed_mentions: { parse: [], roles: [] } }
+}
+
 function discordPayload(post: UpdatePost, title: string, version: string, link: Link | null) {
-  const roleId = post.roleId && /^\d{5,25}$/.test(post.roleId) ? post.roleId : null
   const v = version.replace(/^v/i, '')
   const linkLine = link?.label ? `\n\n🌐 [${link.label}](${link.url})` : ''
   const embeds: Record<string, unknown>[] = [
@@ -145,9 +159,8 @@ function discordPayload(post: UpdatePost, title: string, version: string, link: 
   embeds[embeds.length - 1].timestamp = new Date().toISOString()
 
   return {
-    content: roleId ? `<@&${roleId}>` : '',
-    embeds,
-    allowed_mentions: { parse: [], roles: roleId ? [roleId] : [] }
+    ...mention(post.roleId),
+    embeds
   }
 }
 
