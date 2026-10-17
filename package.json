@@ -1,6 +1,6 @@
 {
   "name": "fivem-portal-push",
-  "version": "1.1.3",
+  "version": "1.2.0",
   "description": "Upload FiveM resources to the Cfx.re Portal and GitHub in one click",
   "main": "./out/main/index.js",
   "scripts": {

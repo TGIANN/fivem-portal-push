@@ -2,7 +2,7 @@
 
 All notable changes to FiveM Portal Push. Versions follow [semantic versioning](https://semver.org/); the newest is on top.
 
-## Unreleased
+## 1.2.0 - 2026-10-17
 
 ### Added
 
