@@ -53,6 +53,8 @@ export interface UpdateSettings {
   roleId: string | null
   allowHere: boolean
   allowEveryone: boolean
+  /** The update API posts the Discord announcement itself (GET /roles, POST /<id>/announce). */
+  apiAnnounces: boolean
 }
 
 export interface TebexPackage {
@@ -78,6 +80,8 @@ export interface UpdatePost {
   discord: boolean
   package: TebexPackage | null
   roleId: string | null
+  /** Ask the update API to post the Discord announcement after the images. */
+  apiAnnounce: boolean
   notes: string
   changedFiles: string
   images: string[]

@@ -163,7 +163,7 @@ export default function SettingsButton({ config, onConfig }: { config: AppConfig
                 </Row>
               </Group>
 
-              <Group header="Update post" boxClassName="bg-elevated" footer="The starting state of the update switches on every script. Each one needs its connection below.">
+              <Group header="Update post" boxClassName="bg-elevated" footer="The starting state of the update switches on every script. Each one needs its connection below. @here and @everyone can be picked as the tag only while they are allowed here, for the app's own Discord post and for the site's.">
                 <Row>
                   <span className="text-body">Post to the update API</span>
                   <span className="ml-auto">
@@ -175,6 +175,20 @@ export default function SettingsButton({ config, onConfig }: { config: AppConfig
                   <span className="ml-auto">
                     <Switch checked={update.discordDefault} onCheckedChange={(v) => setUpdate({ discordDefault: v })} label="Post to Discord by default" />
                   </span>
+                </Row>
+                <Row>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-body">Allow @here</span>
+                    <span className="block text-caption text-label-2">Pings every online member of the server</span>
+                  </span>
+                  <Switch checked={update.allowHere} onCheckedChange={(v) => setUpdate({ allowHere: v })} label="Allow @here" />
+                </Row>
+                <Row>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-body">Allow @everyone</span>
+                    <span className="block text-caption text-label-2">Pings every member of the server</span>
+                  </span>
+                  <Switch checked={update.allowEveryone} onCheckedChange={(v) => setUpdate({ allowEveryone: v })} label="Allow @everyone" />
                 </Row>
               </Group>
 
@@ -193,6 +207,13 @@ export default function SettingsButton({ config, onConfig }: { config: AppConfig
               >
                 <TextRow label="URL" value={update.apiUrl} placeholder="https://example.com/api/updates" onSave={(v) => setUpdate({ apiUrl: v })} />
                 <SecretRow label="Key" saved={secrets.apiKey} placeholder="Paste the API key" onSave={setSecret('apiKey')} />
+                <Row>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-body">Site posts the Discord announcement</span>
+                    <span className="block text-caption text-label-2">Roles come from the site, and the app's own Discord post is skipped</span>
+                  </span>
+                  <Switch checked={update.apiAnnounces} onCheckedChange={(v) => setUpdate({ apiAnnounces: v })} label="Site posts the Discord announcement" />
+                </Row>
                 <TestRow target="api" ready={Boolean(update.apiUrl && secrets.apiKey)} />
               </Group>
 
@@ -201,8 +222,8 @@ export default function SettingsButton({ config, onConfig }: { config: AppConfig
                 boxClassName="bg-elevated"
                 footer={
                   update.discordMode === 'bot'
-                    ? 'The bot needs to see the channel and send messages there. It also lists the server roles you can tag. @here and @everyone show up in the tag list only when they are allowed here.'
-                    : 'A webhook only posts. To tag a role, paste its ID on the script, or use a bot to pick from the role list. @here and @everyone show up on the script only when they are allowed here.'
+                    ? 'The bot needs to see the channel and send messages there. It also lists the server roles you can tag.'
+                    : 'A webhook only posts. To tag a role, paste its ID on the script, or use a bot to pick from the role list.'
                 }
               >
                 <Row>
@@ -226,20 +247,6 @@ export default function SettingsButton({ config, onConfig }: { config: AppConfig
                     <TextRow label="Channel ID" value={update.discordChannel} placeholder="Right click the channel, Copy Channel ID" onSave={(v) => setUpdate({ discordChannel: v })} />
                   </>
                 )}
-                <Row>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-body">Allow @here</span>
-                    <span className="block text-caption text-label-2">Pings every online member of the server</span>
-                  </span>
-                  <Switch checked={update.allowHere} onCheckedChange={(v) => setUpdate({ allowHere: v })} label="Allow @here" />
-                </Row>
-                <Row>
-                  <span className="min-w-0 flex-1">
-                    <span className="block text-body">Allow @everyone</span>
-                    <span className="block text-caption text-label-2">Pings every member of the server</span>
-                  </span>
-                  <Switch checked={update.allowEveryone} onCheckedChange={(v) => setUpdate({ allowEveryone: v })} label="Allow @everyone" />
-                </Row>
                 <TestRow key={update.discordMode} target="discord" ready={discordReady} />
               </Group>
 

@@ -55,6 +55,7 @@ const api = {
   checkUpdateTarget: (target: UpdateTarget) => call<string>('update:check', target),
   tebexPackages: (refresh = false) => call<TebexPackage[]>('tebex:packages', refresh),
   discordRoles: (refresh = false) => call<DiscordRole[]>('discord:roles', refresh),
+  apiRoles: (refresh = false) => call<DiscordRole[]>('update:apiRoles', refresh),
   pickImages: () => call<UpdateImage[]>('images:pick'),
   postUpdate: (scriptPath: string, version: string, post: UpdatePost) => call<string>('update:post', scriptPath, version, post),
   setGitDefault: (value: boolean) => call<AppConfig>('settings:gitDefault', value),

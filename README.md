@@ -149,8 +149,8 @@ The zip then holds `my-script/`, `my-lib/` and `README.md`. Sources must sit ins
 
 The **Update post** section on a script sends an update note after the portal upload is live. It has two targets, each with its own switch. **Settings** sets which ones start switched on.
 
-- **Update API:** your own site. Set the URL and key in Settings; see [docs/update-api.md](docs/update-api.md).
-- **Discord:** a webhook, or a bot token with a channel ID. A bot also lists the server roles you can tag. With a webhook you paste the role ID. `@here` and `@everyone` can be tagged only after you allow them in Settings, Discord.
+- **Update API:** your own site. Set the URL and key in Settings; see [docs/update-api.md](docs/update-api.md). If your site posts the Discord announcement itself, turn on **Site posts the Discord announcement**: the roles then come from your site and the app skips its own Discord post.
+- **Discord:** a webhook, or a bot token with a channel ID. A bot also lists the server roles you can tag. With a webhook you paste the role ID. `@here` and `@everyone` can be tagged only after you allow them in Settings, Update post.
 
 The post contains the update notes you write, the changed files from the changelog, the Tebex package (picked from your store with the Tebex public key, matched by name the first time), the role to tag and up to 10 images. The Discord message is two embeds: the notes with the package name and version, and the changed files as a `diff` block. If the API answers with a page URL, the Discord title links to it.
 

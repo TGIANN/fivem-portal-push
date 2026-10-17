@@ -9,6 +9,9 @@ FiveM Portal Push can send an update note to **your own site** every time you pu
   - [`GET <url>` connection test](#get-url-connection-test)
   - [`POST <url>` create an update](#post-url-create-an-update)
   - [`POST <url>/<id>/images` add an image](#post-urlidimages-add-an-image)
+- [Optional: your site posts to Discord](#optional-your-site-posts-to-discord)
+  - [`GET <url>/roles` roles to tag](#get-urlroles-roles-to-tag)
+  - [`POST <url>/<id>/announce` post the announcement](#post-urlidannounce-post-the-announcement)
 - [Errors](#errors)
 - [Example servers](#example-servers)
 - [Try it with curl](#try-it-with-curl)
@@ -21,8 +24,9 @@ On the script screen, the **Update post** section has a switch for your API (sho
 1. Write the version to `fxmanifest.lua`, zip, upload to the portal, wait until the portal says the version is active.
 2. **`POST <url>`** with the update.
 3. **`POST <url>/<id>/images`** once per image, in the order the user picked them.
-4. Discord, if that switch is on. When your answer has a `url`, the Discord title links to it.
-5. Git commit and push, if that switch is on.
+4. **`POST <url>/<id>/announce`**, only when **Site posts the Discord announcement** is on in Settings. Your site posts to Discord itself, and the app skips its own Discord post. See [Optional: your site posts to Discord](#optional-your-site-posts-to-discord).
+5. Otherwise the app's own Discord post, if that switch is on. When your answer has a `url`, the Discord title links to it.
+6. Git commit and push, if that switch is on.
 
 Your API is only called after the portal version is live. If your API fails, the portal version stays, the git step still runs, and the app shows your error message with a **Post update again** button.
 
@@ -35,7 +39,9 @@ Your API is only called after the portal version is live. If your API fails, the
 | URL | The base URL of your endpoint, for example `https://example.com/api/updates`. Must be `https`; `http://localhost` and `http://127.0.0.1` are allowed for testing. A trailing `/` is removed. |
 | Key | Any secret string your server checks. Stored encrypted on the user's PC (Windows DPAPI) and never shown again. |
 
-**Test connection** calls `GET <url>` and shows your answer.
+| Site posts the Discord announcement | Turn on when your site implements the two [optional endpoints](#optional-your-site-posts-to-discord). |
+
+**Test connection** calls `GET <url>` and shows your answer; with the switch above on, it also calls `GET <url>/roles`.
 
 **Settings → Update post** sets whether the API switch starts on for every script.
 
@@ -60,6 +66,8 @@ Compare the whole header with your key in constant time and answer `401` when it
 | `GET` | `<url>` | none | `200`, optionally `{ "name": "..." }` |
 | `POST` | `<url>` | JSON update | `200` or `201` with `{ "id": ... }` |
 | `POST` | `<url>/<id>/images` | `multipart/form-data`, one file in `image` | any `2xx` |
+| `GET` | `<url>/roles` | none | `{ "roles": [...] }` (optional, see below) |
+| `POST` | `<url>/<id>/announce` | `{ "roleId": ... }` | any `2xx` (optional, see below) |
 
 `<id>` is the `id` you returned from `POST <url>`, URL-encoded.
 
@@ -153,6 +161,40 @@ Authorization: Bearer <key>
 Answer any `2xx`; the body is not read. Up to 10 images, one request each, so a single request stays under common body limits (Vercel allows about 4.5 MB per request). If you have a size limit, answer `413` with a message such as `{ "error": "shot.png is too large (max 3.5 MB)" }`.
 
 If an image fails, the update itself is already saved. The app says so: "The update was saved, but image shot.png failed. …".
+
+## Optional: your site posts to Discord
+
+By default the app posts the Discord announcement itself, with its own webhook or bot. If your site already announces updates (and, for example, edits the Discord message when the update is edited later), let it do that instead: implement the two endpoints below and turn on **Settings → Update API → Site posts the Discord announcement**. Then:
+
+- the role picker on the script lists the roles from `GET <url>/roles`;
+- after the images, the app calls `POST <url>/<id>/announce` with the picked tag;
+- the app does not post to Discord itself in that push, so nothing is posted twice.
+
+### `GET <url>/roles` roles to tag
+
+```json
+{ "roles": [{ "id": "1133238864895557642", "name": "Update ping", "color": 16748080 }] }
+```
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `id` | string | Discord role ID, digits only. Entries without one are skipped. |
+| `name` | string | Shown in the picker, cut at 100 characters. |
+| `color` | number | Role colour as an integer, `0` for none. Optional. |
+
+`@here` and `@everyone` are not part of this list. The app offers them itself when they are allowed in **Settings → Update post**.
+
+### `POST <url>/<id>/announce` post the announcement
+
+Called once, after the update and its images are saved.
+
+```json
+{ "roleId": "1133238864895557642" }
+```
+
+`roleId` is a role ID from your list, `"here"`, `"everyone"`, or `null` for no tag. The app only sends `"here"` or `"everyone"` while the user allows them in Settings. Post the message with `content` set to `<@&roleId>`, `@here` or `@everyone` and `allowed_mentions` limited to that mention.
+
+Answer any `2xx`; the body is not read. Answer `409` when the update is already posted, so a retry does not post twice. When this call fails, the app reports "The update was saved on example.com, but it could not post it to Discord", and the update stays saved.
 
 ## Errors
 
@@ -279,6 +321,7 @@ The update API only receives the requests above. For completeness, this is all t
 | Where | When | What |
 | --- | --- | --- |
 | Your update API | API switch on | The requests on this page. |
+| Your update API's Discord post | Site posts the Discord announcement on | Nothing from the app: your site posts it. The app only sends the picked tag to `POST <url>/<id>/announce`. |
 | Discord | Discord switch on | One message: the role mention, or `@here` / `@everyone` when allowed in Settings (if picked), an embed with the package name (or script name), `v<version>`, the notes and your `url`/`linkLabel` if the API returned them, a second embed with the changed files as a `diff` block, and the images as attachments. Sent with your webhook, or with your bot to the channel in Settings. |
 | Discord API | Bot mode, role picker or Test connection | Reads the channel to find its server, then the server's role list. Nothing is written. |
 | Tebex Headless API | Package picker or Test connection | Reads your package list (`id`, `name`) with the public token. Nothing is written. |

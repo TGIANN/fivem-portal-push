@@ -13,7 +13,7 @@ import { takeScreenshots } from './screenshots'
 import { scanScripts } from './scripts'
 import { setSecret } from './secrets'
 import { getConfig, updateConfig } from './store'
-import { checkTarget, discordRoles, imageExtensions, postUpdate, tebexPackages, webhookPattern } from './updates'
+import { apiRoles, checkTarget, discordRoles, imageExtensions, postUpdate, tebexPackages, webhookPattern } from './updates'
 import { isBetaVersion } from '../shared/version'
 import { log, logFile } from './log'
 
@@ -129,6 +129,7 @@ handle('update:post', (scriptPath: string, version: string, post: UpdatePost) =>
 })
 handle('tebex:packages', (refresh: boolean) => tebexPackages(refresh))
 handle('discord:roles', (refresh: boolean) => discordRoles(refresh))
+handle('update:apiRoles', (refresh: boolean) => apiRoles(refresh))
 // Only files the user picked in this dialog can be uploaded with an update.
 const pickedImages = new Set<string>()
 const checkImages = (post: UpdatePost | null): void => {

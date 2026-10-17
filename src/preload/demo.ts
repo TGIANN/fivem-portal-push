@@ -33,7 +33,7 @@ const config: AppConfig = {
   gitDefault: false,
   zipIgnore: ['*.psd'],
   packages: {},
-  update: { apiDefault: true, discordDefault: true, apiUrl: 'https://tgiann.com/api/updates', tebexToken: 'demo', discordMode: 'bot', discordChannel: '813192868906532905', roleId: '1133238864895550002', allowHere: true, allowEveryone: false },
+  update: { apiDefault: true, discordDefault: true, apiUrl: 'https://tgiann.com/api/updates', tebexToken: 'demo', discordMode: 'bot', discordChannel: '813192868906532905', roleId: '1133238864895550002', allowHere: true, allowEveryone: false, apiAnnounces: true },
   secrets: { apiKey: true, botToken: true, webhookUrl: false }
 }
 
@@ -186,6 +186,7 @@ export const demoApi: Api = {
   checkUpdateTarget: async (target) => (target === 'tebex' ? `${tebexDemo.length} packages found` : target === 'api' ? 'Connected to TGIANN Store' : 'Connected to #updates, 3 roles'),
   tebexPackages: async () => tebexDemo,
   discordRoles: async () => rolesDemo,
+  apiRoles: async () => rolesDemo,
   pickImages: async () => [],
   postUpdate: async () => 'Posted to tgiann.com and Discord',
   setGitDefault: async (value) => {

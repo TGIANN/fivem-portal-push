@@ -80,7 +80,7 @@ export default function ScriptPanel({ script, config, auth, account, onAuthError
   const targets = updateTargets(config, draft)
   const updatePost = (): UpdatePost | null =>
     targets.api || targets.discord
-      ? { api: targets.api, discord: targets.discord, package: draft.package, roleId: usableTag(config, draft.roleId), notes: draft.notes, changedFiles: notes, images: draft.images.map((i) => i.path) }
+      ? { api: targets.api, apiAnnounce: targets.siteAnnounces, discord: targets.discord, package: draft.package, roleId: usableTag(config, draft.roleId), notes: draft.notes, changedFiles: notes, images: draft.images.map((i) => i.path) }
       : null
   // A retry after a failed update post uses what was pushed, not the refreshed changelog.
   const pushed = useRef({ version: value, changedFiles: notes })

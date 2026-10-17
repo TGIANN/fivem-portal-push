@@ -6,7 +6,8 @@ All notable changes to FiveM Portal Push. Versions follow [semantic versioning](
 
 ### Added
 
-- **Allow @here and @everyone** switches in Settings, Discord. Both are off by default. When one is on, it shows up in the script's tag list (bot mode) or as a button next to the role ID (webhook mode), and the post pings with it. While a switch is off, the app refuses to send that tag.
+- **Site posts the Discord announcement** (Settings, Update API). When your update API implements the two optional endpoints, `GET <url>/roles` and `POST <url>/<id>/announce`, the role picker lists your site's roles and the site posts the announcement after the images. The app skips its own Discord post in that push. See [docs/update-api.md](docs/update-api.md).
+- **Allow @here and @everyone** switches in Settings, Update post. Both are off by default. When one is on, it shows up in the script's tag list (bot mode) or as a button next to the role ID (webhook mode), and the post pings with it. While a switch is off, the app refuses to send that tag.
 
 ## 1.1.3 - 2026-10-16
 

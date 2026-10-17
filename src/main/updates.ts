@@ -132,13 +132,19 @@ interface Link {
  * turned on in Settings; a role needs a numeric ID. Embeds never ping, so the
  * notes can not mention anyone.
  */
-function mention(tag: string | null): { content: string; allowed_mentions: { parse: string[]; roles: string[] } } {
+function checkedTag(tag: string | null): string | null {
   const { allowHere, allowEveryone } = getConfig().update
   if (tag === 'here' || tag === 'everyone') {
-    if (!(tag === 'here' ? allowHere : allowEveryone)) throw new Error(`@${tag} is turned off in Settings, Discord.`)
-    return { content: `@${tag}`, allowed_mentions: { parse: ['everyone'], roles: [] } }
+    if (!(tag === 'here' ? allowHere : allowEveryone)) throw new Error(`@${tag} is turned off in Settings, Update post.`)
+    return tag
   }
-  if (tag && /^\d{5,25}$/.test(tag)) return { content: `<@&${tag}>`, allowed_mentions: { parse: [], roles: [tag] } }
+  return tag && /^\d{5,25}$/.test(tag) ? tag : null
+}
+
+function mention(tag: string | null): { content: string; allowed_mentions: { parse: string[]; roles: string[] } } {
+  const t = checkedTag(tag)
+  if (t === 'here' || t === 'everyone') return { content: `@${t}`, allowed_mentions: { parse: ['everyone'], roles: [] } }
+  if (t) return { content: `<@&${t}>`, allowed_mentions: { parse: [], roles: [t] } }
   return { content: '', allowed_mentions: { parse: [], roles: [] } }
 }
 
@@ -317,16 +323,50 @@ async function postToApi(target: ApiTarget, post: UpdatePost, script: string, ve
   return created
 }
 
+const apiRolesCache = new Map<string, DiscordRole[]>()
+
+/** Roles the update API can tag in its own Discord announcement (GET <url>/roles). */
+export async function apiRoles(refresh = false): Promise<DiscordRole[]> {
+  const target = apiTarget()
+  const cached = apiRolesCache.get(target.base)
+  if (cached && !refresh) return cached
+  const body = await api<{ roles?: unknown }>(target, '/roles')
+  const list = Array.isArray(body?.roles) ? body.roles : null
+  if (!list) throw new Error(`${target.host} answered /roles without a "roles" list. ${docsHint}`)
+  const roles = list
+    .filter((r): r is { id: unknown; name: unknown; color?: unknown } => Boolean(r) && typeof r === 'object')
+    .filter((r) => typeof r.id === 'string' && /^\d{5,25}$/.test(r.id) && typeof r.name === 'string')
+    .map((r) => ({ id: r.id as string, name: clamp(r.name as string, 100), color: typeof r.color === 'number' ? r.color : 0 }))
+  apiRolesCache.set(target.base, roles)
+  return roles
+}
+
 export async function postUpdate(post: UpdatePost, script: string, version: string, beta: boolean, progress: (m: string) => void): Promise<string> {
   const done: string[] = []
   let link: Link | null = null
+  // Refuse a disallowed @here / @everyone before anything is saved anywhere.
+  const tag = post.apiAnnounce || post.discord ? checkedTag(post.roleId) : null
 
   if (post.api) {
     const target = apiTarget()
     progress(`Posting to ${target.host}`)
     const created = await postToApi(target, post, script, version, beta, progress)
     if (created.url) link = { url: created.url, label: created.linkLabel }
-    done.push(target.host)
+    if (post.apiAnnounce) {
+      progress(`${target.host}: posting to Discord`)
+      try {
+        await api(target, `/${encodeURIComponent(String(created.id))}/announce`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ roleId: tag })
+        })
+      } catch (e) {
+        throw new Error(`The update was saved on ${target.host}, but it could not post it to Discord. ${e instanceof Error ? e.message : String(e)}`)
+      }
+      done.push(`${target.host} (with its Discord post)`)
+    } else {
+      done.push(target.host)
+    }
   }
 
   if (post.discord) {
@@ -352,7 +392,10 @@ export async function checkTarget(target: UpdateTarget): Promise<string> {
     const endpoint = apiTarget()
     const body = await api<{ name?: unknown } | null>(endpoint, '')
     const name = body && typeof body === 'object' && typeof body.name === 'string' && body.name.trim() ? body.name.trim() : null
-    return name ? `Connected to ${name} (${endpoint.host})` : `Connected to ${endpoint.host}`
+    const connected = name ? `Connected to ${name} (${endpoint.host})` : `Connected to ${endpoint.host}`
+    if (!getConfig().update.apiAnnounces) return connected
+    const roles = await apiRoles(true)
+    return `${connected}, ${roles.length} Discord roles`
   }
   if (getConfig().update.discordMode === 'bot') {
     const ch = await discordBot<{ name?: string }>(`/channels/${botChannel()}`)

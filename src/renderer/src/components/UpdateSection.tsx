@@ -30,11 +30,15 @@ export function updateTargets(config: AppConfig, draft: UpdateDraft) {
   const { update, secrets } = config
   const apiReady = Boolean(update.apiUrl && secrets.apiKey)
   const discordReady = update.discordMode === 'bot' ? Boolean(secrets.botToken && update.discordChannel) : secrets.webhookUrl
+  const api = apiReady && (draft.api ?? update.apiDefault)
+  // When the site posts the announcement, the app does not post a second one.
+  const siteAnnounces = api && update.apiAnnounces
   return {
     apiReady,
     discordReady,
-    api: apiReady && (draft.api ?? update.apiDefault),
-    discord: discordReady && (draft.discord ?? update.discordDefault)
+    api,
+    siteAnnounces,
+    discord: !siteAnnounces && Boolean(discordReady) && (draft.discord ?? update.discordDefault)
   }
 }
 
@@ -174,7 +178,11 @@ export default function UpdateSection({ scriptName, assetName, config, draft, di
   const bot = config.update.discordMode === 'bot'
 
   const packages = useRemote(window.api.tebexPackages, active && hasTebex)
-  const roles = useRemote(window.api.discordRoles, targets.discord && bot)
+  const botRoles = useRemote(window.api.discordRoles, targets.discord && bot)
+  const siteRoles = useRemote(window.api.apiRoles, targets.siteAnnounces)
+  const roles = targets.siteAnnounces ? siteRoles : botRoles
+  // Roles come as a list from the site or the bot; a plain webhook takes a pasted ID.
+  const roleList = targets.siteAnnounces || bot
 
   // Link the Tebex package by name the first time, like the portal asset.
   useEffect(() => {
@@ -213,7 +221,9 @@ export default function UpdateSection({ scriptName, assetName, config, draft, di
   ) : active && targets.api && !draft.package ? (
     <span className="text-orange">Pick the package so the update lands on the right product.</span>
   ) : active ? (
-    'Changed files are taken from the changelog above. Sent after the portal upload is live.'
+    targets.siteAnnounces
+      ? `Changed files are taken from the changelog above. Sent after the portal upload is live; ${apiHost ?? 'the site'} posts the Discord announcement.`
+      : 'Changed files are taken from the changelog above. Sent after the portal upload is live.'
   ) : (
     'Turn on a target to post update notes with this push.'
   )
@@ -230,9 +240,13 @@ export default function UpdateSection({ scriptName, assetName, config, draft, di
       <Row>
         <span className="min-w-0 flex-1">
           <span className="block text-body">Post to Discord</span>
-          {!targets.discordReady && <span className="block text-caption text-label-2">Set up a webhook or bot in Settings</span>}
+          {targets.siteAnnounces ? (
+            <span className="block text-caption text-label-2">{apiHost ?? 'The update API'} posts it, so the app does not post a second one</span>
+          ) : (
+            !targets.discordReady && <span className="block text-caption text-label-2">Set up a webhook or bot in Settings</span>
+          )}
         </span>
-        <Switch checked={targets.discord} disabled={!targets.discordReady || disabled} onCheckedChange={(v) => onDraft({ discord: v })} label="Post to Discord" />
+        <Switch checked={targets.discord} disabled={!targets.discordReady || targets.siteAnnounces || disabled} onCheckedChange={(v) => onDraft({ discord: v })} label="Post to Discord" />
       </Row>
 
       {active && (
@@ -274,8 +288,8 @@ export default function UpdateSection({ scriptName, assetName, config, draft, di
             </Popover.Portal>
           </Popover.Root>
 
-          {targets.discord &&
-            (bot ? (
+          {(targets.discord || targets.siteAnnounces) &&
+            (roleList ? (
               <Popover.Root open={roleOpen} onOpenChange={setRoleOpen}>
                 <Popover.Trigger disabled={disabled} className={cn(triggerClass, 'relative before:absolute before:top-0 before:right-0 before:left-4 before:h-px before:bg-separator')}>
                   <span className="text-body">Tag role</span>

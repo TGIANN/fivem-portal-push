@@ -14,7 +14,7 @@ const defaults: AppConfig = {
   gitDefault: false,
   zipIgnore: [],
   packages: {},
-  update: { apiDefault: false, discordDefault: false, apiUrl: '', tebexToken: '', discordMode: 'webhook', discordChannel: '', roleId: null, allowHere: false, allowEveryone: false },
+  update: { apiDefault: false, discordDefault: false, apiUrl: '', tebexToken: '', discordMode: 'webhook', discordChannel: '', roleId: null, allowHere: false, allowEveryone: false, apiAnnounces: false },
   secrets: { apiKey: false, botToken: false, webhookUrl: false }
 }
 
