@@ -51,7 +51,7 @@ function defaultName(source: string): string {
   return basename(source.replace(/[\\/]+$/, ''))
 }
 
-function isInside(parent: string, child: string): boolean {
+export function isInside(parent: string, child: string): boolean {
   const rel = relative(parent, child)
   return rel === '' || (!rel.startsWith('..') && !isAbsolute(rel))
 }
@@ -70,18 +70,30 @@ export const secretPatterns = [
   '.ssh',
   '.gnupg',
   '.aws',
+  '.azure',
+  '.docker',
+  '.kube',
   '.env',
   '.env.*',
   'server.cfg',
   '.git-credentials',
   '.npmrc',
+  '.netrc',
+  '.pgpass',
+  '.pypirc',
+  '.htpasswd',
   'id_rsa*',
   'id_ed25519*',
   'id_ecdsa*',
   '*.pem',
   '*.key',
   '*.pfx',
-  '*.p12'
+  '*.p12',
+  '*.p8',
+  '*.ppk',
+  '*.jks',
+  '*.keystore',
+  '*.kdbx'
 ]
 
 const isSecretName = picomatch(secretPatterns, { dot: true, nocase: true })

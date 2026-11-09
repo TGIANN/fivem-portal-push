@@ -1,8 +1,10 @@
-import { faGear } from '@fortawesome/free-solid-svg-icons'
+import { faGear, faPlus, faXmark } from '@fortawesome/free-solid-svg-icons'
+import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import * as Dialog from '@radix-ui/react-dialog'
 import { useState, type ReactNode } from 'react'
+import { defaultBuildDirs } from '../../../shared/buildDirs'
 import { updateApiDocsUrl } from '../../../shared/links'
-import type { AppConfig, DiscordMode, SecretName, UpdateSettings, UpdateTarget } from '../../../shared/types'
+import type { AppConfig, AppUpdateState, DiscordMode, SecretName, UpdateSettings, UpdateTarget } from '../../../shared/types'
 import { cn, errorMessage } from '@/lib'
 import { Button } from './ui/button'
 import { Group, Row } from './ui/group'
@@ -109,7 +111,95 @@ function TestRow({ target, ready }: { target: UpdateTarget; ready: boolean }) {
   )
 }
 
-export default function SettingsButton({ config, onConfig }: { config: AppConfig | null; onConfig: (cfg: AppConfig) => void }) {
+function BuildFolders({ dirs, onSave }: { dirs: string[]; onSave: (dirs: string[]) => void }) {
+  const [draft, setDraft] = useState('')
+  const add = () => {
+    if (!draft.trim()) return
+    onSave([...dirs, draft])
+    setDraft('')
+  }
+  const isDefault = dirs.length === defaultBuildDirs.length && dirs.every((d, i) => d === defaultBuildDirs[i])
+
+  return (
+    <Group
+      header="Build folders"
+      boxClassName="bg-elevated"
+      aside={
+        <Button variant="plain" size="sm" disabled={isDefault} onClick={() => onSave(defaultBuildDirs)}>
+          Reset
+        </Button>
+      }
+      footer="Paths from the script folder. A change inside one of these is a single line in the changelog, telling buyers to replace the whole folder."
+    >
+      {dirs.length > 0 && (
+        <Row className="flex-wrap gap-1.5">
+          {dirs.map((dir) => (
+            <span key={dir} className="inline-flex h-7 items-center gap-1.5 rounded-md bg-fill pr-1 pl-2.5 font-mono text-footnote">
+              {dir}
+              <button
+                onClick={() => onSave(dirs.filter((d) => d !== dir))}
+                aria-label={`Remove ${dir}`}
+                className="grid size-5 cursor-pointer place-items-center rounded text-caption text-label-3 transition-colors duration-150 hover:text-red"
+              >
+                <FontAwesomeIcon icon={faXmark} />
+              </button>
+            </span>
+          ))}
+        </Row>
+      )}
+      <Row>
+        <input
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onKeyDown={(e) => e.key === 'Enter' && add()}
+          placeholder="Add a folder like web/app"
+          spellCheck={false}
+          className={inputClass}
+        />
+        <Button variant="tinted" size="icon" icon={faPlus} aria-label="Add folder" disabled={!draft.trim()} onClick={add} />
+      </Row>
+    </Group>
+  )
+}
+
+function AppVersion({ state, onShowUpdate }: { state: AppUpdateState; onShowUpdate: () => void }) {
+  const pending = state.status === 'available' || state.status === 'downloading' || state.status === 'ready'
+  const text = state.status === 'unsupported' ? 'Updates work in the installed app.' : state.status === 'latest' ? 'This is the newest version.' : state.status === 'error' ? state.error : null
+
+  return (
+    <Group header="App" boxClassName="bg-elevated">
+      <Row>
+        <span className="text-body">Version</span>
+        <span className="font-mono text-label-2 tabular-nums">{state.current}</span>
+        <span className="ml-auto">
+          {pending ? (
+            <Button variant="tinted" size="sm" onClick={onShowUpdate}>
+              Update to {state.version}
+            </Button>
+          ) : (
+            <Button variant="tinted" size="sm" busy={state.status === 'checking'} disabled={state.status === 'unsupported'} onClick={() => window.api.checkAppUpdate()}>
+              Check for updates
+            </Button>
+          )}
+        </span>
+      </Row>
+      {text && (
+        <Row>
+          <span className={cn('min-w-0 flex-1 text-footnote break-words', state.status === 'error' ? 'text-red' : 'text-label-2')}>{text}</span>
+        </Row>
+      )}
+    </Group>
+  )
+}
+
+interface SettingsProps {
+  config: AppConfig | null
+  onConfig: (cfg: AppConfig) => void
+  appUpdate: AppUpdateState | null
+  onShowUpdate: () => void
+}
+
+export default function SettingsButton({ config, onConfig, appUpdate, onShowUpdate }: SettingsProps) {
   const [error, setError] = useState<string | null>(null)
   const update = config?.update
   const secrets = config?.secrets
@@ -254,6 +344,10 @@ export default function SettingsButton({ config, onConfig }: { config: AppConfig
                 <TextRow label="Public key" value={update.tebexToken} placeholder="Tebex public token" onSave={(v) => setUpdate({ tebexToken: v })} />
                 <TestRow target="tebex" ready={Boolean(update.tebexToken)} />
               </Group>
+
+              <BuildFolders dirs={config.buildDirs} onSave={(dirs) => run(() => window.api.setBuildDirs(dirs))} />
+
+              {appUpdate && <AppVersion state={appUpdate} onShowUpdate={onShowUpdate} />}
             </div>
           )}
         </Dialog.Content>

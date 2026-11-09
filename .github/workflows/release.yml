@@ -1,6 +1,8 @@
 name: Release
 
 on:
+  push:
+    branches: [main]
   release:
     types: [published]
   workflow_dispatch:
@@ -13,10 +15,30 @@ permissions:
   contents: write
 
 jobs:
+  # Keeps a release pull request open from the Conventional Commits on main. Merging it publishes the release.
+  release-please:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    outputs:
+      released: ${{ steps.release.outputs.release_created }}
+      tag: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - id: release
+        uses: googleapis/release-please-action@5c625bfb5d1ff62eadeeb3772007f7f66fdcf071 # v4
+        with:
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+
   windows:
+    needs: release-please
+    # A release made with the workflow token starts no other workflow, so the build is a job of this one.
+    if: always() && (needs.release-please.outputs.released == 'true' || github.event_name != 'push')
     runs-on: windows-latest
     env:
-      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      TAG: ${{ needs.release-please.outputs.tag || github.event.release.tag_name || inputs.tag }}
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
@@ -63,6 +85,9 @@ jobs:
         run: |
           gh release upload "$TAG" \
             dist/FiveM-Portal-Push-Setup-*.exe \
+            dist/FiveM-Portal-Push-Setup-*.exe.blockmap \
             dist/FiveM-Portal-Push-*-portable.exe \
             dist/FiveM-Portal-Push-Connector-*.zip \
             --clobber
+          # Last, so the app never sees an update whose installer is not there yet.
+          gh release upload "$TAG" dist/latest.yml --clobber

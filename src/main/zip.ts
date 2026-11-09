@@ -1,10 +1,9 @@
 import { createWriteStream, statSync } from 'fs'
-import { readdir } from 'fs/promises'
 import { tmpdir } from 'os'
 import { basename, join } from 'path'
 import { ZipFile } from 'yazl'
 import { bundleError, resolveBundle } from './bundle'
-import { compileRules, ignoreRules } from './ignore'
+import { includedFiles } from './ignore'
 
 export async function zipResource(dir: string): Promise<{ path: string; files: number; size: number; extras: number }> {
   const name = basename(dir)
@@ -16,20 +15,10 @@ export async function zipResource(dir: string): Promise<{ path: string; files: n
   let files = 0
 
   async function addFolder(root: string, prefix: string): Promise<void> {
-    const ignored = compileRules(ignoreRules(root))
-    async function walk(abs: string, rel: string): Promise<void> {
-      for (const entry of await readdir(abs, { withFileTypes: true })) {
-        const relPath = rel ? `${rel}/${entry.name}` : entry.name
-        if (entry.isDirectory()) {
-          if (ignored(relPath, true)) continue
-          await walk(join(abs, entry.name), relPath)
-        } else if (entry.isFile() && !ignored(relPath, false)) {
-          zip.addFile(join(abs, entry.name), `${prefix}/${relPath}`)
-          files++
-        }
-      }
+    for (const file of await includedFiles(root)) {
+      zip.addFile(file.abs, `${prefix}/${file.rel}`)
+      files++
     }
-    await walk(root, '')
   }
 
   await addFolder(dir, name)

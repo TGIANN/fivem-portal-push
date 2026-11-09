@@ -1,16 +1,44 @@
 import { execFile } from 'child_process'
 import { existsSync } from 'fs'
 import { readdir } from 'fs/promises'
-import { dirname, join, relative, resolve } from 'path'
+import { delimiter, dirname, isAbsolute, join, relative, resolve } from 'path'
 import type { ChangedFile } from '../shared/types'
+
+// Windows looks in the working folder before PATH, so a plain "git" would start
+// a git.exe that ships inside a resource. Only an absolute path from PATH is used.
+function findGit(): string | null {
+  const exe = process.platform === 'win32' ? 'git.exe' : 'git'
+  for (const entry of (process.env.PATH ?? '').split(delimiter)) {
+    const dir = entry.trim().replace(/^"|"$/g, '')
+    if (isAbsolute(dir) && existsSync(join(dir, exe))) return join(dir, exe)
+  }
+  return null
+}
+
+const gitPath = findGit()
 
 export function git(cwd: string, args: string[]): Promise<string> {
   return new Promise((resolve, reject) => {
-    execFile('git', ['-c', 'core.fsmonitor=false', ...args], { cwd, maxBuffer: 64 * 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
+    if (!gitPath) return reject(new Error('Git was not found on this PC.'))
+    execFile(gitPath, ['-c', 'core.fsmonitor=false', ...args], { cwd, maxBuffer: 64 * 1024 * 1024, windowsHide: true }, (err, stdout, stderr) => {
       if (err) reject(new Error((stderr || err.message).trim()))
       else resolve(stdout)
     })
   })
+}
+
+/**
+ * The app reads every repo it finds on its own, also ones the user never trusted,
+ * and a resource can ship a .git folder whose config or hooks name programs to run.
+ * Status and diff must not start them, so hooks and the repo's own filters are off.
+ */
+async function readOnlyArgs(root: string): Promise<string[]> {
+  const keys = await git(root, ['config', '--includes', '--local', '--name-only', '--get-regexp', '^filter\\.']).catch(() => '')
+  const filters = keys
+    .split('\n')
+    .filter(Boolean)
+    .flatMap((key) => ['-c', key.endsWith('.required') ? `${key}=false` : `${key}=`])
+  return ['--no-optional-locks', '-c', 'core.hooksPath=/dev/null', ...filters]
 }
 
 export async function gitRoot(dir: string): Promise<string | null> {
@@ -28,7 +56,7 @@ export function toRepoPath(root: string, dir: string): string {
 }
 
 export async function dirtyPaths(root: string): Promise<string[]> {
-  const out = await git(root, ['status', '--porcelain', '-z', '--untracked-files=all'])
+  const out = await git(root, [...(await readOnlyArgs(root)), 'status', '--porcelain', '-z', '--untracked-files=all', '--ignore-submodules=all'])
   const entries = out.split('\0')
   const paths: string[] = []
   for (let i = 0; i < entries.length; i++) {
@@ -52,16 +80,19 @@ const statusMap: Record<string, ChangedFile['status']> = { A: 'added', M: 'modif
 
 export async function changedFiles(root: string, dir: string, since: string | null): Promise<ChangedFile[]> {
   const scope = toRepoPath(root, dir)
+  // git refuses an empty path, which is what a script at the top of its repo has.
+  const pathspec = scope || '.'
   const files = new Map<string, ChangedFile['status']>()
+  const safe = await readOnlyArgs(root)
 
   if (since) {
-    const out = await git(root, ['diff', '--name-status', '-z', '--no-renames', since, '--', scope])
+    const out = await git(root, [...safe, 'diff', '--name-status', '-z', '--no-renames', '--no-ext-diff', '--ignore-submodules=all', since, '--', pathspec])
     const parts = out.split('\0').filter(Boolean)
     for (let i = 0; i + 1 < parts.length; i += 2) {
       files.set(parts[i + 1], statusMap[parts[i][0]] ?? 'modified')
     }
   } else {
-    const out = await git(root, ['status', '--porcelain', '-z', '--untracked-files=all', '--', scope])
+    const out = await git(root, [...safe, 'status', '--porcelain', '-z', '--untracked-files=all', '--ignore-submodules=all', '--', pathspec])
     for (const entry of out.split('\0')) {
       if (entry.length < 4) continue
       const code = entry.slice(0, 2)
@@ -70,7 +101,7 @@ export async function changedFiles(root: string, dir: string, since: string | nu
     }
   }
 
-  const untracked = await git(root, ['ls-files', '--others', '--exclude-standard', '-z', '--', scope])
+  const untracked = await git(root, [...safe, 'ls-files', '--others', '--exclude-standard', '-z', '--', pathspec])
   for (const file of untracked.split('\0').filter(Boolean)) files.set(file, 'added')
 
   const prefix = scope ? scope + '/' : ''
@@ -111,7 +142,7 @@ async function collapseDirs(dir: string, changes: ChangedFile[]): Promise<Change
 }
 
 export async function commitAndPush(root: string, dir: string, message: string, log: (msg: string) => void): Promise<string | null> {
-  const scope = toRepoPath(root, dir)
+  const scope = toRepoPath(root, dir) || '.'
   await git(root, ['add', '-A', '--', scope])
 
   const staged = await git(root, ['diff', '--cached', '--name-only', '--', scope])

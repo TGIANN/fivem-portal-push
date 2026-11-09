@@ -71,6 +71,27 @@ export function compileRules(rules: IgnoreRule[]): IgnoreMatcher {
   }
 }
 
+const batch = 500
+
+/** Every file of a folder that goes into the zip, with its path inside that folder. */
+export async function includedFiles(root: string): Promise<{ abs: string; rel: string }[]> {
+  const ignored = compileRules(ignoreRules(root))
+  const out: { abs: string; rel: string }[] = []
+  async function walk(abs: string, rel: string): Promise<void> {
+    for (const [i, entry] of (await readdir(abs, { withFileTypes: true })).entries()) {
+      if (i % batch === batch - 1) await new Promise(setImmediate)
+      const relPath = rel ? `${rel}/${entry.name}` : entry.name
+      if (entry.isDirectory()) {
+        if (!ignored(relPath, true)) await walk(join(abs, entry.name), relPath)
+      } else if (entry.isFile() && !ignored(relPath, false)) {
+        out.push({ abs: join(abs, entry.name), rel: relPath })
+      }
+    }
+  }
+  await walk(root, '')
+  return out
+}
+
 async function scanDir(dir: string, match: IgnoreMatcher): Promise<{ entries: ZipEntry[]; size: number; files: number }> {
   const entries: ZipEntry[] = []
 
@@ -79,8 +100,14 @@ async function scanDir(dir: string, match: IgnoreMatcher): Promise<{ entries: Zi
     let files = 0
     const list = await readdir(abs, { withFileTypes: true })
     list.sort((a, b) => Number(b.isDirectory()) - Number(a.isDirectory()) || a.name.localeCompare(b.name))
+    const sizes: number[] = []
+    for (let i = 0; i < list.length; i += batch) {
+      sizes.push(...(await Promise.all(list.slice(i, i + batch).map((e) => (e.isFile() ? stat(join(abs, e.name)).then((s) => s.size) : 0)))))
+    }
 
-    for (const e of list) {
+    for (const [i, e] of list.entries()) {
+      // A folder with tens of thousands of files must not freeze the window.
+      if (i % batch === batch - 1) await new Promise(setImmediate)
       if (!e.isDirectory() && !e.isFile()) continue
       const path = rel ? `${rel}/${e.name}` : e.name
       const excludedBy = match(path, e.isDirectory())
@@ -96,7 +123,7 @@ async function scanDir(dir: string, match: IgnoreMatcher): Promise<{ entries: Zi
         entry.size = sub.size
         entry.files = sub.files
       } else {
-        entry.size = (await stat(join(abs, e.name))).size
+        entry.size = sizes[i]
         entry.files = 1
       }
 

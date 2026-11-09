@@ -1,4 +1,5 @@
-import type { AppConfig, BundleItem, BundleSpec, ChangedFile, DiscordRole, TebexPackage, IgnoreRule, PortalAssetDetail, PushProgress, PushStepId, ScriptInfo, ZipEntry, ZipTree } from '../shared/types'
+import { cleanBuildDirs, defaultBuildDirs } from '../shared/buildDirs'
+import type { AppConfig, AppUpdateState, BundleItem, BundleSpec, ChangedFile, DiscordRole, TebexPackage, IgnoreRule, PortalAssetDetail, PushProgress, PushRecord, PushStepId, ScriptChecks, ScriptInfo, ZipEntry, ZipTree } from '../shared/types'
 import type { Api } from './index'
 
 const root = 'D:\\FiveM\\resources\\[tgiann]'
@@ -33,6 +34,9 @@ const config: AppConfig = {
   gitDefault: false,
   zipIgnore: ['*.psd'],
   packages: {},
+  roles: {},
+  secretAllow: {},
+  buildDirs: defaultBuildDirs,
   update: { apiDefault: true, discordDefault: true, apiUrl: 'https://tgiann.com/api/updates', tebexToken: 'demo', discordMode: 'bot', discordChannel: '813192868906532905', roleId: '1133238864895550002', allowHere: true, allowEveryone: false, apiAnnounces: true },
   secrets: { apiKey: true, botToken: true, webhookUrl: false }
 }
@@ -134,7 +138,10 @@ function setBundle(specs: BundleSpec[]): void {
 const listeners = new Set<(p: PushProgress) => void>()
 const wait = (ms: number) => new Promise((r) => setTimeout(r, ms))
 
+let cancelDemo = false
+
 async function push(): Promise<void> {
+  cancelDemo = false
   const emit = (step: PushStepId, status: PushProgress['status'], message?: string, progress?: number) => listeners.forEach((cb) => cb({ step, status, message, progress }))
   const steps: [PushStepId, string][] = [
     ['manifest', '1.4.0 → 1.4.1'],
@@ -148,9 +155,37 @@ async function push(): Promise<void> {
   for (const [step, message] of steps) {
     emit(step, 'running')
     await wait(250)
+    if (cancelDemo) {
+      emit(step, 'error', 'Push cancelled.')
+      throw new Error('Push cancelled.')
+    }
     emit(step, 'done', message, step === 'upload' ? 1 : undefined)
   }
 }
+
+let appUpdate: AppUpdateState = { status: 'latest', current: '1.2.0', version: null, notes: '', percent: 0, portable: false, error: null }
+const appUpdateListeners = new Set<(s: AppUpdateState) => void>()
+const setAppUpdate = (patch: Partial<AppUpdateState>) => {
+  appUpdate = { ...appUpdate, ...patch }
+  appUpdateListeners.forEach((cb) => cb(appUpdate))
+}
+
+function demoChecks(path: string): ScriptChecks {
+  const allow = config.secretAllow[path.split('\\').pop()!] ?? []
+  const finding = (id: string, file: string, kind: string, sure: boolean, preview: string) => ({ id, file, line: 14, kind, sure, preview, allowed: allow.includes(id), own: true })
+  const secrets = path.endsWith('tgiann-garage')
+    ? [finding('a1b2c3d4e5f60718', 'server/editable.lua', 'Discord webhook', true, 'discor••••x9')]
+    : path.endsWith('tgiann-phone')
+      ? [finding('b1b2c3d4e5f60718', 'configs/configServer.lua', 'Possible secret', false, 'ab12cd••••90')]
+      : []
+  return { secrets, manifest: path.endsWith('tgiann-phone') ? [{ directive: 'client_script', entry: 'client/old.lua', problem: 'File not found' }] : [], scanned: 27 }
+}
+
+const demoHistory: PushRecord[] = [
+  { at: days(6), version: '1.4.0', assetName: 'tgiann-phone', files: 27, size: 954000, seconds: 41, replaced: false, outcome: 'live', message: null },
+  { at: days(11), version: '1.4.0-b2', assetName: 'tgiann-phone', files: 26, size: 921000, seconds: 12, replaced: false, outcome: 'cancelled', message: 'Push cancelled.' },
+  { at: days(24), version: '1.3.2', assetName: 'tgiann-phone', files: 26, size: 918000, seconds: 38, replaced: true, outcome: 'failed', message: 'Portal rejected the upload' }
+]
 
 export const demoApi: Api = {
   getConfig: async () => config,
@@ -194,7 +229,42 @@ export const demoApi: Api = {
     config.git = {}
     return { ...config }
   },
+  setBuildDirs: async (dirs) => {
+    config.buildDirs = cleanBuildDirs(dirs)
+    return { ...config }
+  },
+  rememberUpdate: async (path, patch) => {
+    const name = path.split('\\').pop()!
+    if (patch.package) config.packages[name] = patch.package
+    if (patch.roleId !== undefined) config.roles[name] = patch.roleId
+    return { ...config }
+  },
+  getAppUpdate: async () => appUpdate,
+  checkAppUpdate: async () => setAppUpdate({ status: 'available', version: '1.3.0', notes: 'New\n\n• Replace a version that is already on the portal\n• The role and package stay saved for each script' }),
+  downloadAppUpdate: async () => {
+    for (const percent of [12, 38, 64, 91]) {
+      setAppUpdate({ status: 'downloading', percent })
+      await wait(300)
+    }
+    setAppUpdate({ status: 'ready', percent: 100 })
+  },
+  installAppUpdate: async () => setAppUpdate({ status: 'latest', current: '1.3.0', version: null, notes: '', percent: 0 }),
+  onAppUpdate: (cb) => {
+    appUpdateListeners.add(cb)
+    return () => appUpdateListeners.delete(cb)
+  },
   push,
+  cancelPush: async () => {
+    cancelDemo = true
+  },
+  runChecks: async (path) => demoChecks(path),
+  allowSecret: async (path, id, allowed) => {
+    const name = path.split('\\').pop()!
+    const rest = (config.secretAllow[name] ?? []).filter((x) => x !== id)
+    config.secretAllow[name] = allowed ? [...rest, id] : rest
+    return { ...config }
+  },
+  pushHistory: async () => demoHistory,
   openPath: async () => '',
   openLog: async () => '',
   onPushProgress: (cb) => {

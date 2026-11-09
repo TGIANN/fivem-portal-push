@@ -97,6 +97,12 @@ export interface AppConfig {
   gitDefault: boolean
   zipIgnore: string[]
   packages: Record<string, TebexPackage>
+  /** The tag picked for each script. null means "No tag"; a script without an entry starts with update.roleId. */
+  roles: Record<string, string | null>
+  /** Findings of the secret check the user marked as fine, per script. */
+  secretAllow: Record<string, string[]>
+  /** Folders that show as one line in the changelog, relative to the script. */
+  buildDirs: string[]
   update: UpdateSettings
   /** Which secrets are saved. The values never leave the main process. */
   secrets: Record<SecretName, boolean>
@@ -152,6 +158,8 @@ export interface PushRequest {
   changelog: string
   git: boolean
   update: UpdatePost | null
+  /** Delete the portal version with this number first, then upload under the same number. */
+  replace: boolean
 }
 
 export type PushStepId = 'manifest' | 'zip' | 'versions' | 'upload' | 'process' | 'update' | 'git'
@@ -167,6 +175,56 @@ export interface PushProgress {
 export interface PushResult {
   ok: boolean
   error?: string
+}
+
+export interface SecretFinding {
+  /** False for extra content, which .portalignore of the script does not cover. */
+  own: boolean
+  id: string
+  file: string
+  line: number
+  kind: string
+  /** A format that can only be a secret. These stop the push until allowed. */
+  sure: boolean
+  /** Masked. The real value never leaves the main process. */
+  preview: string
+  allowed: boolean
+}
+
+export interface ManifestIssue {
+  directive: string
+  entry: string
+  problem: string
+}
+
+export interface ScriptChecks {
+  secrets: SecretFinding[]
+  manifest: ManifestIssue[]
+  scanned: number
+}
+
+export interface PushRecord {
+  at: string
+  version: string
+  assetName: string
+  files: number
+  size: number
+  seconds: number
+  replaced: boolean
+  outcome: 'live' | 'failed' | 'cancelled'
+  message: string | null
+}
+
+export type AppUpdateStatus = 'unsupported' | 'idle' | 'checking' | 'latest' | 'available' | 'downloading' | 'ready' | 'error'
+
+export interface AppUpdateState {
+  status: AppUpdateStatus
+  current: string
+  version: string | null
+  notes: string
+  percent: number
+  portable: boolean
+  error: string | null
 }
 
 export interface ChangedFile {

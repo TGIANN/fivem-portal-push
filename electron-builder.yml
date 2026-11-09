@@ -8,6 +8,17 @@ files:
 extraResources:
   - from: extension
     to: extension
+publish:
+  provider: github
+  owner: TGIANN
+  repo: fivem-portal-push
+electronFuses:
+  runAsNode: false
+  enableCookieEncryption: true
+  enableNodeOptionsEnvironmentVariable: false
+  enableNodeCliInspectArguments: false
+  enableEmbeddedAsarIntegrityValidation: true
+  onlyLoadAppFromAsar: true
 win:
   icon: build/icon.ico
   target:

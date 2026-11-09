@@ -12,6 +12,8 @@ let ses: Electron.Session | null = null
 function cfxSession(): Electron.Session {
   if (ses) return ses
   ses = session.fromPartition(partition)
+  // This session only shows login pages; they need no camera, location and so on.
+  ses.setPermissionRequestHandler((_, __, callback) => callback(false))
   ses.setUserAgent(
     ses
       .getUserAgent()

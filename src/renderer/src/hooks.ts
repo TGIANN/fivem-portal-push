@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { AppConfig, AssetMapping, AuthState, ChangedFile, PortalAssetDetail, ScriptInfo, ZipTree } from '../../shared/types'
+import type { AppConfig, AppUpdateState, AssetMapping, AuthState, ChangedFile, PortalAssetDetail, ScriptChecks, ScriptInfo, ZipTree } from '../../shared/types'
 import { errorMessage, normalizeName } from './lib'
 
 export function useAssetLink(script: ScriptInfo, config: AppConfig, auth: AuthState, onAuthError: (e: unknown) => void) {
@@ -81,14 +81,26 @@ const groups: { status: ChangedFile['status'][]; label: string }[] = [
   { status: ['deleted'], label: '-deleted:' }
 ]
 
-const buildDir = /^((?:ui|html|web|nui)\/(?:build|dist))(\/|$)/
+export function useAppUpdate() {
+  const [state, setState] = useState<AppUpdateState | null>(null)
 
-export function formatChanges(files: ChangedFile[], manifestChanged: boolean): string {
+  useEffect(() => {
+    window.api.getAppUpdate().then(setState)
+    return window.api.onAppUpdate(setState)
+  }, [])
+
+  return state
+}
+
+export function formatChanges(files: ChangedFile[], manifestChanged: boolean, buildDirs: string[]): string {
   const builds = new Set<string>()
   const rest: ChangedFile[] = []
+  // A build folder that holds another one on the list counts as the deeper one.
+  const dirs = [...buildDirs].sort((a, b) => b.length - a.length)
   for (const f of files) {
-    const m = f.file.match(buildDir)
-    if (m) builds.add(m[1])
+    const path = f.file.toLowerCase()
+    const dir = dirs.find((d) => path === d.toLowerCase() || path.startsWith(`${d.toLowerCase()}/`))
+    if (dir) builds.add(f.file.slice(0, dir.length))
     else rest.push(f)
   }
   if (manifestChanged && !rest.some((f) => f.file === 'fxmanifest.lua')) rest.push({ status: 'modified', file: 'fxmanifest.lua' })
@@ -122,4 +134,24 @@ export function useZipTree(path: string) {
   }, [reload])
 
   return { tree, error, reload }
+}
+
+export function useChecks(path: string) {
+  const [checks, setChecks] = useState<ScriptChecks | null>(null)
+  const [error, setError] = useState<string | null>(null)
+  const [busy, setBusy] = useState(false)
+
+  const reload = useCallback(async () => {
+    setBusy(true)
+    try {
+      setChecks(await window.api.runChecks(path))
+      setError(null)
+    } catch (e) {
+      setError(errorMessage(e))
+    } finally {
+      setBusy(false)
+    }
+  }, [path])
+
+  return { checks, error, busy, reload }
 }

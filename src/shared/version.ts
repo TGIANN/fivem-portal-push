@@ -1,5 +1,7 @@
 const betaSuffix = /-(b|beta|rc)(\d*)$/i
 
+export const versionFormat = /^\d+(\.\d+){1,3}(-(b|beta|rc)\d*)?$/i
+
 export function isBetaVersion(version: string): boolean {
   return betaSuffix.test(version.trim())
 }

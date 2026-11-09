@@ -1,11 +1,13 @@
-import { faArrowUpFromBracket, faRotate } from '@fortawesome/free-solid-svg-icons'
+import { faArrowUpFromBracket, faRotate, faXmark } from '@fortawesome/free-solid-svg-icons'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { AppConfig, AuthState, PushProgress, PushStepId, ScriptInfo, UpdatePost } from '../../../shared/types'
-import { bumpVersion, compareVersions, isBetaVersion, latestVersion } from '../../../shared/version'
-import { formatChanges, useAssetLink, useGitChanges, useZipTree } from '@/hooks'
+import { bumpVersion, compareVersions, isBetaVersion, latestVersion, versionFormat } from '../../../shared/version'
+import { formatChanges, useAssetLink, useChecks, useGitChanges, useZipTree } from '@/hooks'
 import { errorMessage } from '@/lib'
 import AssetPicker from './AssetPicker'
 import BundleSection from './BundleSection'
+import ChecksSection from './ChecksSection'
+import PushHistory from './PushHistory'
 import PortalVersions from './PortalVersions'
 import PushSteps from './PushSteps'
 import Toolbar from './Toolbar'
@@ -27,18 +29,21 @@ interface Props {
   onConfig: (cfg: AppConfig) => void
 }
 
-const versionFormat = /^\d+(\.\d+){1,3}(-(b|beta|rc)\d*)?$/i
-
 export default function ScriptPanel({ script, config, auth, account, onAuthError, onPushed, onConfig }: Props) {
   const link = useAssetLink(script, config, auth, onAuthError)
   const git = useGitChanges(script.path)
   const zip = useZipTree(script.path)
+  const checks = useChecks(script.path)
+  const reloadChecks = checks.reload
   const [version, setVersion] = useState<string | null>(null)
   const [changelog, setChangelog] = useState<string | null>(null)
+  // The version number the user agreed to replace. Typing another number turns it off by itself.
+  const [replaceVersion, setReplaceVersion] = useState<string | null>(null)
   const [gitChoice, setUseGit] = useState<boolean | null>(null)
   const useGit = gitChoice ?? config.git[script.name] ?? config.gitDefault ?? false
   const [steps, setSteps] = useState<Partial<Record<PushStepId, PushProgress>> | null>(null)
   const [pushing, setPushing] = useState(false)
+  const [cancelling, setCancelling] = useState(false)
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null)
   const [scrolled, setScrolled] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -55,18 +60,26 @@ export default function ScriptPanel({ script, config, auth, account, onAuthError
       ? script.version
       : bumpVersion(base, 'patch')
   const value = version ?? suggestion
-  const gitText = git.changes ? formatChanges(git.changes.files, value !== script.version) : ''
-  const notes = changelog ?? gitText
+  const replaced = link.detail?.versions?.find((v) => v.version === value) ?? null
+  const replacing = replaced !== null && replaceVersion === value
+  const gitText = useMemo(() => (git.changes ? formatChanges(git.changes.files, value !== script.version, config.buildDirs) : ''), [git.changes, value, script.version, config.buildDirs])
+  // The same version keeps its notes; git would only list what changed since the first upload.
+  const notes = changelog ?? (replacing && replaced.changelog ? replaced.changelog : gitText)
 
+  const secretsBlock = checks.checks?.secrets.some((s) => s.sure && !s.allowed) ?? false
   const issue = !value
     ? { error: true, text: 'Enter a version to push.' }
     : !versionFormat.test(value)
       ? { error: true, text: 'Use a version like 1.2.0, or 1.2.0-b1 for a beta.' }
-      : portalVersions.includes(value)
-        ? { error: true, text: `${value} is already on the portal. Pick a higher version.` }
-        : portalLatest && compareVersions(value, portalLatest) < 0
-          ? { error: false, text: `This is lower than the newest portal version, ${portalLatest}.` }
-          : null
+      : secretsBlock
+        ? { error: true, text: 'Push is blocked because a key or webhook is in the zip. See Before upload further down.' }
+        : replacing
+          ? { error: false, text: `${value} is deleted from the portal first, then this folder is uploaded as ${value}. If the upload fails, push again.` }
+          : replaced
+            ? { error: true, text: `${value} is already on the portal. Turn on Replace, or pick a higher version.` }
+            : portalLatest && compareVersions(value, portalLatest) < 0
+              ? { error: false, text: `This is lower than the newest portal version, ${portalLatest}.` }
+              : null
 
   useEffect(
     () =>
@@ -77,7 +90,12 @@ export default function ScriptPanel({ script, config, auth, account, onAuthError
     []
   )
 
-  const targets = updateTargets(config, draft)
+  // Zip rules and pushes refresh the tree, and what the checks see depends on it.
+  useEffect(() => {
+    if (zip.tree) reloadChecks()
+  }, [zip.tree, reloadChecks])
+
+  const targets = updateTargets(config, draft, replacing)
   const updatePost = (): UpdatePost | null =>
     targets.api || targets.discord
       ? { api: targets.api, apiAnnounce: targets.siteAnnounces, discord: targets.discord, package: draft.package, roleId: usableTag(config, draft.roleId), notes: draft.notes, changedFiles: notes, images: draft.images.map((i) => i.path) }
@@ -88,11 +106,14 @@ export default function ScriptPanel({ script, config, auth, account, onAuthError
   const afterLive = async () => {
     setVersion(null)
     setChangelog(null)
+    setReplaceVersion(null)
     await Promise.all([onPushed(), link.refresh(), git.reload(), zip.reload()])
   }
 
   const bundleBroken = zip.tree?.extras.some((e) => e.error) ?? false
   const canPush = auth === 'loggedIn' && link.asset !== null && !issue?.error && !bundleBroken && !pushing
+  // Once the upload is finished the version is live, and there is nothing left to cancel.
+  const canCancel = pushing && steps?.upload?.status !== 'done'
 
   const push = async () => {
     if (!canPush || !link.asset) return
@@ -110,7 +131,8 @@ export default function ScriptPanel({ script, config, auth, account, onAuthError
         version: value,
         changelog: notes,
         git: useGit && Boolean(script.gitRoot),
-        update: updatePost()
+        update: updatePost(),
+        replace: replacing
       })
       setResult({ ok: true, text: `${script.name} ${value} is live on the portal.` })
       setDraft((d) => ({ ...d, notes: '', images: [] }))
@@ -122,7 +144,13 @@ export default function ScriptPanel({ script, config, auth, account, onAuthError
       else link.refresh()
     } finally {
       setPushing(false)
+      setCancelling(false)
     }
+  }
+
+  const cancel = () => {
+    setCancelling(true)
+    window.api.cancelPush()
   }
 
   const retryUpdate = async () => {
@@ -150,16 +178,24 @@ export default function ScriptPanel({ script, config, auth, account, onAuthError
         trailing={
           <>
             {account}
+            {canCancel && (
+              <Button variant="plain" icon={faXmark} busy={cancelling} onClick={cancel}>
+                {cancelling ? 'Cancelling' : 'Cancel'}
+              </Button>
+            )}
             <Button variant="prominent" icon={faArrowUpFromBracket} busy={pushing} disabled={!canPush} onClick={push}>
-              {pushing ? 'Pushing' : `Push ${value || ''}`}
+              {pushing ? 'Pushing' : `${replacing ? 'Replace' : 'Push'} ${value || ''}`}
             </Button>
           </>
         }
       />
       <div ref={scrollRef} onScroll={(e) => setScrolled(e.currentTarget.scrollTop > 40)} className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto flex max-w-[720px] flex-col gap-7 px-8 pt-6 pb-16">
-          <div>
-            <h1 className="text-title font-bold tracking-[0.01em]">{script.name}</h1>
+          <div className="relative">
+            <div className="absolute top-1 right-0">
+              <PushHistory scriptPath={script.path} scriptName={script.name} />
+            </div>
+            <h1 className="pr-24 text-title font-bold tracking-[0.01em]">{script.name}</h1>
             <button onClick={() => window.api.openPath(script.path)} className="mt-1 max-w-full cursor-pointer truncate text-left text-footnote text-label-2 hover:text-label" title="Open folder">
               {script.path}
             </button>
@@ -184,14 +220,39 @@ export default function ScriptPanel({ script, config, auth, account, onAuthError
 
           <Group header="Cfx.re portal" footer="The portal keeps up to 5 versions. When all 5 are used, the oldest one is removed before the new upload.">
             <AssetPicker value={link.asset} autoMatched={link.autoMatched} disabled={auth !== 'loggedIn'} onChange={link.pick} onError={onAuthError} />
-            {link.asset && <PortalVersions detail={link.detail} loading={link.loading} error={link.error} onRetry={link.refresh} />}
+            {link.asset && (
+              <PortalVersions
+                detail={link.detail}
+                loading={link.loading}
+                error={link.error}
+                onRetry={link.refresh}
+                replacing={replacing ? value : null}
+                disabled={pushing}
+                onReplace={(v) => {
+                  setVersion(v)
+                  setReplaceVersion(v)
+                  setChangelog(null)
+                }}
+              />
+            )}
           </Group>
 
           <Group
             header="Version"
             footer={issue ? <span className={issue.error ? 'text-red' : 'text-orange'}>{issue.text}</span> : isBetaVersion(value) ? 'Versions ending in -b1, -b2 and so on are uploaded as a beta (release candidate).' : 'Written to fxmanifest.lua before the upload.'}
           >
-            <VersionEditor local={script.version} base={base} value={value} beta={isBetaVersion(value)} invalid={Boolean(issue?.error)} onChange={setVersion} />
+            <VersionEditor local={script.version} base={base} value={value} beta={isBetaVersion(value)} invalid={Boolean(issue?.error)} onChange={(v) => {
+              setVersion(v)
+              setReplaceVersion(null)
+            }} />
+            {replaced && (
+              <Row>
+                <span className="text-body">Replace {value} on the portal</span>
+                <span className="ml-auto">
+                  <Switch checked={replacing} disabled={pushing} onCheckedChange={(on) => setReplaceVersion(on ? value : null)} label={`Replace ${value} on the portal`} />
+                </span>
+              </Row>
+            )}
           </Group>
 
           <Group
@@ -200,7 +261,7 @@ export default function ScriptPanel({ script, config, auth, account, onAuthError
               <div className="flex items-center gap-1">
                 <CopyButton text={notes} />
                 {git.changes && (
-                  <Button variant="plain" size="sm" icon={faRotate} onClick={() => git.reload().then(() => setChangelog(null))}>
+                  <Button variant="plain" size="sm" icon={faRotate} onClick={() => git.reload().then((res) => setChangelog(replacing && res ? formatChanges(res.files, value !== script.version, config.buildDirs) : null))}>
                     Fill from git
                   </Button>
                 )}
@@ -249,7 +310,22 @@ export default function ScriptPanel({ script, config, auth, account, onAuthError
             }}
           />
 
-          <UpdateSection scriptName={script.name} assetName={link.asset?.assetName ?? null} config={config} draft={draft} disabled={pushing || retrying} onDraft={patchDraft} />
+          <ChecksSection
+            checks={checks.checks}
+            error={checks.error}
+            busy={checks.busy}
+            onRescan={reloadChecks}
+            onAllow={async (id, allowed) => {
+              onConfig(await window.api.allowSecret(script.path, id, allowed))
+              await reloadChecks()
+            }}
+            onExclude={async (file) => {
+              await window.api.setLocalIgnore(script.path, [...(zip.tree?.rules.filter((r) => r.source === 'local').map((r) => r.pattern) ?? []), file])
+              await Promise.all([zip.reload(), git.reload()])
+            }}
+          />
+
+          <UpdateSection scriptName={script.name} scriptPath={script.path} assetName={link.asset?.assetName ?? null} config={config} draft={draft} replacing={replacing} disabled={pushing || retrying} onDraft={patchDraft} onConfig={onConfig} />
 
           <Group header="GitHub" footer={script.gitRoot ? `Commits only this folder as "${script.name} ${value}" and pushes the current branch.` : 'This folder is not in a git repository.'}>
             <Row>

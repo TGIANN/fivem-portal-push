@@ -25,6 +25,7 @@ Shipping an update to a paid FiveM resource used to look like this: open `fxmani
 
 - **Every script in one list.** Point it at your `resources` folders; every folder with an `fxmanifest.lua` shows up, with scripts that have uncommitted changes on top. Search, filter and sort by name, version or last push.
 - **Knows what is live.** Shows the versions already on the portal next to the one in `fxmanifest.lua` and suggests the next version, so you never upload the same number twice.
+- **Replace a version.** Fixed something right after a push? Turn on **Replace** to delete that portal version and upload the folder again under the same number.
 - **Beta releases.** A version ending in `-b1`, `-b2`, `-beta1` or `-rc1` is uploaded as a release candidate.
 - **Handles the 5 version limit.** When the asset already has five versions, the oldest one is removed before the upload. The list shows which one beforehand.
 - **Changelog from git.** Prefilled with the files that changed since your last push. The portal renders release notes as Markdown, so the list goes inside a code block to keep one file per line:
@@ -35,12 +36,17 @@ Shipping an update to a paid FiveM resource used to look like this: open `fxmani
   -deleted:   server/old.lua
   modified:   ui/build (delete the 'ui/build' folder before updating the 'ui/build' folder)
   ```
+  Which folders count as one line (`ui/build`, `web/app` and so on) is set in Settings, Build folders.
 - **Zip rules you can see.** Browse the resource as a tree and untick whatever should stay out of the zip. Rules are saved in a `.portalignore` file inside the resource, so they travel with git to every PC. Rules for all scripts live in the app.
+- **Checks before the upload.** Every text file going into the zip is scanned for Discord webhooks and bot tokens, Steam, Cfx, GitHub, AWS, Google, AI and Stripe keys, private keys and database passwords. A sure match blocks the push until you remove the value, exclude the file or allow that one finding. Values are masked on screen and never logged. `fxmanifest.lua` is compared with the zip too, so a missing file, a wrong upper or lower case or a file your zip rules drop shows as a warning.
 - **More than one folder in a zip.** Add other resources (a shared library, a bridge) or loose files like install notes to the same upload. They sit next to the script folder at the zip root.
 - **Remembers the portal asset.** Pick the matching portal asset once (exact name matches are linked automatically) and it is selected for you next time.
-- **Update post.** After the upload is live, post the update notes, changed files, package name, a role tag and images to your own site and/or Discord (webhook or bot).
+- **Update post.** After the upload is live, post the update notes, changed files, package name, a role tag and images to your own site and/or Discord (webhook or bot). The package and role are saved for each script.
+- **Updates itself.** The installed app finds new releases on GitHub, shows the notes and installs them. The portable exe links to the download page.
 - **Optional GitHub step.** Commits only that resource folder as `<name> <version>` and pushes the current branch.
 - **Log in with the browser you already use.** No passwords and no copied cookies (see below).
+- **Cancel a push.** Until the upload is finished you can stop it. The unfinished upload is removed from the portal and `fxmanifest.lua` gets its old version back.
+- **Push history.** Each script lists its last 50 pushes from this PC, with the result, size and duration.
 - **Clear errors.** Every step shows its own status, and everything goes to a log file you can open from the app.
 
 ## Screenshots
@@ -166,6 +172,7 @@ Any site can take the updates: it needs three small endpoints (a connection test
 | --- | --- |
 | Settings, asset links, rules for all scripts, Tebex package links | `%APPDATA%/fivem-portal-push/config.json` |
 | API key, Discord bot token and webhook URL, encrypted with Windows DPAPI | `%APPDATA%/fivem-portal-push/secrets.json` |
+| Push history | `%APPDATA%/fivem-portal-push/history.json` |
 | Log file | `%APPDATA%/fivem-portal-push/logs/portal-push.log` |
 | Portal session | the app's own browser profile in the same folder |
 | Zip rules for one script | `<resource>/.portalignore` |
@@ -209,12 +216,13 @@ Stack: Electron, electron-vite, React 19, TypeScript, Tailwind CSS v4, Radix UI,
 
 ## Releasing
 
-Publishing a GitHub release builds the app automatically:
+The version number and the release notes come from the commit messages, through [release-please](https://github.com/googleapis/release-please):
 
-1. Add the version to [CHANGELOG.md](CHANGELOG.md), then create a release with a tag like `v1.2.0` (or `v1.3.0-beta.1`) and publish it. Use the changelog section as the release notes.
-2. The [Release workflow](.github/workflows/release.yml) takes the version from the tag, writes it into `package.json` and the extension manifest, type-checks, builds on Windows and attaches the installer, the portable exe and the extension zip to the release.
+1. Write commits as [Conventional Commits](https://www.conventionalcommits.org/). `feat:` raises the minor version, `fix:` and `perf:` the patch version, and `feat!:` the major version. Only these three types appear in the notes.
+2. Every push to `main` opens or updates a release pull request with the next version, `CHANGELOG.md` and `package.json`. Nothing is released yet.
+3. Merging that pull request tags the version and publishes the release. The [Release workflow](.github/workflows/release.yml) then type-checks, builds on Windows and attaches the installer, the portable exe and the extension zip.
 
-To rebuild an existing release, run the workflow by hand from the Actions tab and enter its tag.
+To force a version, add a `Release-As: 1.4.0` line at the end of a commit message. A beta is still made by hand: publish a release with a tag like `v1.3.0-beta.1`. To rebuild an existing release, run the workflow by hand from the Actions tab and enter its tag.
 
 ## License
 

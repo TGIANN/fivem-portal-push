@@ -1,14 +1,16 @@
 import { faFolderPlus } from '@fortawesome/free-solid-svg-icons'
 import { faFolderOpen } from '@fortawesome/free-regular-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AppConfig, AuthState, ScriptInfo } from '../../shared/types'
 import AccountButton, { type LoginMethod } from './components/AccountButton'
+import AppUpdateDialog from './components/AppUpdateDialog'
 import ScriptPanel from './components/ScriptPanel'
 import Sidebar from './components/Sidebar'
 import Toolbar from './components/Toolbar'
 import { Button } from './components/ui/button'
 import { TooltipProvider } from './components/ui/tooltip'
+import { useAppUpdate } from './hooks'
 import { errorMessage, isAuthError } from './lib'
 
 export default function App() {
@@ -19,6 +21,16 @@ export default function App() {
   const [auth, setAuth] = useState<AuthState>('checking')
   const [authError, setAuthError] = useState<string | null>(null)
   const [waiting, setWaiting] = useState<LoginMethod | null>(null)
+  const appUpdate = useAppUpdate()
+  const [updateOpen, setUpdateOpen] = useState(false)
+  const announced = useRef<string | null>(null)
+
+  // Each new version opens the update screen once; after "Later" it waits in the sidebar.
+  useEffect(() => {
+    if (appUpdate?.status !== 'available' || appUpdate.version === announced.current) return
+    announced.current = appUpdate.version
+    setUpdateOpen(true)
+  }, [appUpdate])
 
   const rescan = useCallback(async () => {
     setScanning(true)
@@ -99,7 +111,10 @@ export default function App() {
             await rescan()
           }}
           onSettings={setConfig}
+          appUpdate={appUpdate}
+          onShowUpdate={() => setUpdateOpen(true)}
         />
+        {appUpdate?.version && <AppUpdateDialog state={appUpdate} open={updateOpen} onOpenChange={setUpdateOpen} />}
         <main className="flex min-w-0 flex-1 flex-col">
           {script && config ? (
             <ScriptPanel

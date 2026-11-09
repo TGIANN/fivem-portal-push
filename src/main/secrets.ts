@@ -1,7 +1,7 @@
 import { app, safeStorage } from 'electron'
-import { existsSync, readFileSync, writeFileSync } from 'fs'
 import { join } from 'path'
 import type { SecretName } from '../shared/types'
+import { readJsonFile, writeJsonFile } from './jsonFile'
 
 // Tokens and keys live apart from config.json, encrypted with the OS keychain
 // (DPAPI on Windows); nothing is saved when encryption is not available.
@@ -9,7 +9,7 @@ import type { SecretName } from '../shared/types'
 const file = join(app.getPath('userData'), 'secrets.json')
 const names: SecretName[] = ['apiKey', 'botToken', 'webhookUrl']
 
-let data: Partial<Record<SecretName, string>> = existsSync(file) ? JSON.parse(readFileSync(file, 'utf8')) : {}
+let data: Partial<Record<SecretName, string>> = readJsonFile(file) ?? {}
 
 export function getSecret(name: SecretName): string | null {
   const value = data[name]
@@ -24,7 +24,7 @@ export function setSecret(name: SecretName, value: string | null): void {
   if (!clean) delete data[name]
   else if (!safeStorage.isEncryptionAvailable()) throw new Error('Windows can not encrypt secrets for this account right now, so the value was not saved.')
   else data[name] = 'enc:' + safeStorage.encryptString(clean).toString('base64')
-  writeFileSync(file, JSON.stringify(data, null, 2))
+  writeJsonFile(file, data)
 }
 
 export function secretFlags(): Record<SecretName, boolean> {

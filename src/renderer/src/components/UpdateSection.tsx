@@ -23,14 +23,16 @@ export interface UpdateDraft {
 export const maxImages = 10
 
 export function newUpdateDraft(config: AppConfig, script: string): UpdateDraft {
-  return { api: null, discord: null, package: config.packages[script] ?? null, autoMatched: false, roleId: config.update.roleId, notes: '', images: [] }
+  const roleId = config.roles[script] === undefined ? config.update.roleId : config.roles[script]
+  return { api: null, discord: null, package: config.packages[script] ?? null, autoMatched: false, roleId, notes: '', images: [] }
 }
 
-export function updateTargets(config: AppConfig, draft: UpdateDraft) {
+/** A replaced version is not news, so its posts start off and only go out when switched on. */
+export function updateTargets(config: AppConfig, draft: UpdateDraft, replacing: boolean) {
   const { update, secrets } = config
   const apiReady = Boolean(update.apiUrl && secrets.apiKey)
   const discordReady = update.discordMode === 'bot' ? Boolean(secrets.botToken && update.discordChannel) : secrets.webhookUrl
-  const api = apiReady && (draft.api ?? update.apiDefault)
+  const api = apiReady && (draft.api ?? (!replacing && update.apiDefault))
   // When the site posts the announcement, the app does not post a second one.
   const siteAnnounces = api && update.apiAnnounces
   return {
@@ -38,7 +40,7 @@ export function updateTargets(config: AppConfig, draft: UpdateDraft) {
     discordReady,
     api,
     siteAnnounces,
-    discord: !siteAnnounces && Boolean(discordReady) && (draft.discord ?? update.discordDefault)
+    discord: !siteAnnounces && Boolean(discordReady) && (draft.discord ?? (!replacing && update.discordDefault))
   }
 }
 
@@ -161,18 +163,25 @@ function roleColor(color: number): string {
 
 interface Props {
   scriptName: string
+  scriptPath: string
   assetName: string | null
   config: AppConfig
   draft: UpdateDraft
+  replacing: boolean
   disabled: boolean
   onDraft: (patch: Partial<UpdateDraft>) => void
+  onConfig: (cfg: AppConfig) => void
 }
 
-export default function UpdateSection({ scriptName, assetName, config, draft, disabled, onDraft }: Props) {
+export default function UpdateSection({ scriptName, scriptPath, assetName, config, draft, replacing, disabled, onDraft, onConfig }: Props) {
   const [packageOpen, setPackageOpen] = useState(false)
   const [roleOpen, setRoleOpen] = useState(false)
   const [imageError, setImageError] = useState<string | null>(null)
-  const targets = updateTargets(config, draft)
+  const remember = (patch: { package?: TebexPackage; roleId?: string | null }) => {
+    setImageError(null)
+    window.api.rememberUpdate(scriptPath, patch).then(onConfig, (e) => setImageError(errorMessage(e)))
+  }
+  const targets = updateTargets(config, draft, replacing)
   const active = targets.api || targets.discord
   const hasTebex = Boolean(config.update.tebexToken)
   const bot = config.update.discordMode === 'bot'
@@ -210,6 +219,7 @@ export default function UpdateSection({ scriptName, assetName, config, draft, di
   const itemClass = 'flex h-8 cursor-pointer items-center gap-2.5 rounded-md px-2.5 data-[selected=true]:bg-fill'
   const pickTag = (value: string | null) => {
     onDraft({ roleId: value })
+    remember({ roleId: value })
     setRoleOpen(false)
   }
   const apiHost = hostOf(config.update.apiUrl)
@@ -225,7 +235,7 @@ export default function UpdateSection({ scriptName, assetName, config, draft, di
       ? `Changed files are taken from the changelog above. Sent after the portal upload is live; ${apiHost ?? 'the site'} posts the Discord announcement.`
       : 'Changed files are taken from the changelog above. Sent after the portal upload is live.'
   ) : (
-    'Turn on a target to post update notes with this push.'
+    replacing ? 'A replaced version is not announced unless you turn a target on.' : 'Turn on a target to post update notes with this push.'
   )
 
   return (
@@ -275,6 +285,7 @@ export default function UpdateSection({ scriptName, assetName, config, draft, di
                   selected={draft.package ? String(draft.package.id) : null}
                   onPick={(p) => {
                     onDraft({ package: p, autoMatched: false })
+                    remember({ package: p })
                     setPackageOpen(false)
                   }}
                   render={(p) => (
@@ -344,7 +355,7 @@ export default function UpdateSection({ scriptName, assetName, config, draft, di
                   {mass.map((t) => (
                     <button
                       key={t}
-                      onClick={() => onDraft({ roleId: tag === t ? null : t })}
+                      onClick={() => pickTag(tag === t ? null : t)}
                       disabled={disabled}
                       aria-pressed={tag === t}
                       className={cn(
@@ -358,6 +369,7 @@ export default function UpdateSection({ scriptName, assetName, config, draft, di
                   <input
                     value={isMassTag(tag) ? '' : (draft.roleId ?? '')}
                     onChange={(e) => onDraft({ roleId: e.target.value.replace(/\D/g, '') || null })}
+                    onBlur={() => !isMassTag(draft.roleId) && remember({ roleId: draft.roleId })}
                     placeholder="Role ID, empty for no tag"
                     disabled={disabled}
                     spellCheck={false}

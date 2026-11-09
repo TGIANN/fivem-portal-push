@@ -8,6 +8,7 @@ import { completeSso, getSsoUrl } from './portal'
 
 export const loginPort = 47821
 const timeout = 5 * 60 * 1000
+const maxBody = 64 * 1024
 
 export function extensionDir(): string {
   return app.isPackaged ? join(process.resourcesPath, 'extension') : join(app.getAppPath(), 'extension')
@@ -64,6 +65,12 @@ export function browserLogin(onSuccess: () => void): Promise<boolean> {
 
   return new Promise((resolve, reject) => {
     const server = createServer((req, res) => {
+      // A web page that points its own domain at 127.0.0.1 arrives with that domain here.
+      if (req.headers.host !== `127.0.0.1:${loginPort}`) {
+        res.writeHead(403)
+        res.end()
+        return
+      }
       const url = new URL(req.url ?? '/', `http://127.0.0.1:${loginPort}`)
 
       if (req.method === 'GET' && url.pathname === '/connect') {
@@ -89,7 +96,10 @@ export function browserLogin(onSuccess: () => void): Promise<boolean> {
 
       if (req.method === 'POST' && url.pathname === '/sso') {
         let body = ''
-        req.on('data', (c) => (body += c))
+        req.on('data', (c) => {
+          body += c
+          if (body.length > maxBody) req.destroy()
+        })
         req.on('end', async () => {
           try {
             const data = JSON.parse(body) as { nonce: string; sso: string; sig: string }

@@ -11,9 +11,13 @@ interface Props {
   loading: boolean
   error: string | null
   onRetry: () => void
+  /** The version number this push replaces, if any. */
+  replacing: string | null
+  onReplace: (version: string) => void
+  disabled: boolean
 }
 
-export default function PortalVersions({ detail, loading, error, onRetry }: Props) {
+export default function PortalVersions({ detail, loading, error, onRetry, replacing, onReplace, disabled }: Props) {
   if (error) {
     return (
       <Row>
@@ -50,9 +54,11 @@ export default function PortalVersions({ detail, loading, error, onRetry }: Prop
   const oldestId = versions[versions.length - 1].id
 
   return versions.map((v) => {
-    const willDelete = full && v.id === oldestId
+    // Replacing frees its own slot, so the oldest version stays.
+    const willDelete = replacing ? v.version === replacing : full && v.id === oldestId
+    const canReplace = v.version !== replacing && !disabled
     return (
-      <Row key={v.id}>
+      <Row key={v.id} className="group">
         <Tooltip content={<span className="whitespace-pre-wrap">{v.changelog || 'No changelog'}</span>}>
           <span className={willDelete ? 'font-mono text-label-3 line-through tabular-nums' : 'font-mono tabular-nums'}>{v.version}</span>
         </Tooltip>
@@ -61,10 +67,19 @@ export default function PortalVersions({ detail, loading, error, onRetry }: Prop
         {willDelete && (
           <span className="flex items-center gap-1.5 text-caption text-orange">
             <FontAwesomeIcon icon={faTrashCan} />
-            Removed on next push
+            {replacing ? 'Replaced on this push' : 'Removed on next push'}
           </span>
         )}
-        <span className="ml-auto text-footnote text-label-2 tabular-nums" title={new Date(v.created_at).toLocaleString()}>
+        {canReplace && (
+          <button
+            onClick={() => onReplace(v.version)}
+            aria-label={`Replace ${v.version}`}
+            className="ml-auto cursor-pointer text-footnote font-medium text-accent opacity-0 transition-opacity duration-150 group-hover:opacity-100 hover:underline focus-visible:opacity-100"
+          >
+            Replace
+          </button>
+        )}
+        <span className={`${canReplace ? '' : 'ml-auto '}text-footnote text-label-2 tabular-nums`} title={new Date(v.created_at).toLocaleString()}>
           {timeAgo(v.created_at)}
         </span>
       </Row>
