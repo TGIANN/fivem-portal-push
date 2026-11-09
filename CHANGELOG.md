@@ -2,6 +2,41 @@
 
 All notable changes to FiveM Portal Push. Versions follow [semantic versioning](https://semver.org/); the newest is on top.
 
+## [1.3.0](https://github.com/TGIANN/fivem-portal-push/compare/v1.2.0...v1.3.0) (2026-11-09)
+
+
+### New Features
+
+* cancel a push until the upload is finished ([69b3d1e](https://github.com/TGIANN/fivem-portal-push/commit/69b3d1e8fbcee8b03e3f35fcb6d826c6e050887a))
+* check GitHub for new releases and install them from an update screen ([69b3d1e](https://github.com/TGIANN/fivem-portal-push/commit/69b3d1e8fbcee8b03e3f35fcb6d826c6e050887a))
+* compare fxmanifest.lua with the zip for missing files, wrong upper or lower case and excluded files ([69b3d1e](https://github.com/TGIANN/fivem-portal-push/commit/69b3d1e8fbcee8b03e3f35fcb6d826c6e050887a))
+* replace a version that is already on the portal ([69b3d1e](https://github.com/TGIANN/fivem-portal-push/commit/69b3d1e8fbcee8b03e3f35fcb6d826c6e050887a))
+* save the role and package per script as soon as you pick them ([69b3d1e](https://github.com/TGIANN/fivem-portal-push/commit/69b3d1e8fbcee8b03e3f35fcb6d826c6e050887a))
+* scan files going into the zip for webhooks, tokens, API keys and database passwords, and block the push on a sure match ([69b3d1e](https://github.com/TGIANN/fivem-portal-push/commit/69b3d1e8fbcee8b03e3f35fcb6d826c6e050887a))
+* set the build folders in Settings, with ui/app and web/app as new defaults ([69b3d1e](https://github.com/TGIANN/fivem-portal-push/commit/69b3d1e8fbcee8b03e3f35fcb6d826c6e050887a))
+* show the push history of each script ([69b3d1e](https://github.com/TGIANN/fivem-portal-push/commit/69b3d1e8fbcee8b03e3f35fcb6d826c6e050887a))
+
+
+### Bug Fixes
+
+* a script at the top of its own git repo no longer shows as not in a repository ([69b3d1e](https://github.com/TGIANN/fivem-portal-push/commit/69b3d1e8fbcee8b03e3f35fcb6d826c6e050887a))
+* do not announce a replaced version unless a post switch is turned on ([69b3d1e](https://github.com/TGIANN/fivem-portal-push/commit/69b3d1e8fbcee8b03e3f35fcb6d826c6e050887a))
+* save settings, secrets and history through a temporary file so a crash can not leave half a file ([69b3d1e](https://github.com/TGIANN/fivem-portal-push/commit/69b3d1e8fbcee8b03e3f35fcb6d826c6e050887a))
+* **security:** check paths and versions from the interface in the main process ([69b3d1e](https://github.com/TGIANN/fivem-portal-push/commit/69b3d1e8fbcee8b03e3f35fcb6d826c6e050887a))
+* **security:** login server only answers requests for 127.0.0.1, limits the body size, and the login window denies browser permissions ([69b3d1e](https://github.com/TGIANN/fivem-portal-push/commit/69b3d1e8fbcee8b03e3f35fcb6d826c6e050887a))
+* **security:** never run a repo's own git filters or hooks during status and diff ([69b3d1e](https://github.com/TGIANN/fivem-portal-push/commit/69b3d1e8fbcee8b03e3f35fcb6d826c6e050887a))
+* **security:** never zip more kinds of secret files such as .netrc, .pgpass, .docker, .kube and key stores ([69b3d1e](https://github.com/TGIANN/fivem-portal-push/commit/69b3d1e8fbcee8b03e3f35fcb6d826c6e050887a))
+* **security:** run the main window in a sandbox and stop it from navigating away from the app ([69b3d1e](https://github.com/TGIANN/fivem-portal-push/commit/69b3d1e8fbcee8b03e3f35fcb6d826c6e050887a))
+* **security:** start git from its absolute path so a git.exe inside a resource can not run ([69b3d1e](https://github.com/TGIANN/fivem-portal-push/commit/69b3d1e8fbcee8b03e3f35fcb6d826c6e050887a))
+* **security:** turn off the Electron switches that let other programs run code through the app, and encrypt the portal cookies ([69b3d1e](https://github.com/TGIANN/fivem-portal-push/commit/69b3d1e8fbcee8b03e3f35fcb6d826c6e050887a))
+
+
+### Performance
+
+* minify the interface code ([69b3d1e](https://github.com/TGIANN/fivem-portal-push/commit/69b3d1e8fbcee8b03e3f35fcb6d826c6e050887a))
+* read the zip tree of very large scripts faster ([69b3d1e](https://github.com/TGIANN/fivem-portal-push/commit/69b3d1e8fbcee8b03e3f35fcb6d826c6e050887a))
+* scan many separate git repos in parallel ([69b3d1e](https://github.com/TGIANN/fivem-portal-push/commit/69b3d1e8fbcee8b03e3f35fcb6d826c6e050887a))
+
 ## 1.2.0 - 2026-10-17
 
 ### Added
