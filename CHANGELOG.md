@@ -2,6 +2,13 @@
 
 All notable changes to FiveM Portal Push. Versions follow [semantic versioning](https://semver.org/); the newest is on top.
 
+## [1.3.1](https://github.com/TGIANN/fivem-portal-push/compare/v1.3.0...v1.3.1) (2026-11-10)
+
+
+### Bug Fixes
+
+* skip .claude and CLAUDE.md in every zip by default ([73ae93b](https://github.com/TGIANN/fivem-portal-push/commit/73ae93b704ff5199fcf606bf588e899efe7472ad))
+
 ## [1.3.0](https://github.com/TGIANN/fivem-portal-push/compare/v1.2.0...v1.3.0) (2026-11-09)
 
 
