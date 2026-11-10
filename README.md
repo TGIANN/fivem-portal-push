@@ -135,7 +135,7 @@ ui/src/
 client/test.lua
 ```
 
-Always skipped: `.git`, `.github`, `.vscode`, `.idea`, `node_modules`, `*.zip`, `.gitignore`, `.portalignore`, `.portalbundle`, and files that usually hold passwords or keys: `server.cfg`, `.env*`, `.ssh`, `.git-credentials`, `.npmrc`, `id_rsa*`, `*.key`, `*.pem`, `*.pfx`. Files that are not zipped are left out of the changelog too.
+Always skipped: `.git`, `.github`, `.vscode`, `.idea`, `.claude`, `CLAUDE.md`, `node_modules`, `*.zip`, `.gitignore`, `.portalignore`, `.portalbundle`, and files that usually hold passwords or keys: `server.cfg`, `.env*`, `.ssh`, `.git-credentials`, `.npmrc`, `id_rsa*`, `*.key`, `*.pem`, `*.pfx`. Files that are not zipped are left out of the changelog too.
 
 ## Extra content
 

@@ -13,6 +13,8 @@ export const defaultIgnore = [
   '.github/',
   '.vscode/',
   '.idea/',
+  '.claude/',
+  'CLAUDE.md',
   'node_modules/',
   '*.zip',
   ignoreFile,
