@@ -2,6 +2,13 @@
 
 All notable changes to FiveM Portal Push. Versions follow [semantic versioning](https://semver.org/); the newest is on top.
 
+## [1.4.1](https://github.com/TGIANN/fivem-portal-push/compare/v1.4.0...v1.4.1) (2026-11-16)
+
+
+### Bug Fixes
+
+* stop reading granted versions in the background and explain Cfx.re firewall blocks ([68c2fc0](https://github.com/TGIANN/fivem-portal-push/commit/68c2fc0625d54a1abe127ca4910b24019081a723))
+
 ## [1.4.0](https://github.com/TGIANN/fivem-portal-push/compare/v1.3.0...v1.4.0) (2026-11-16)
 
 
