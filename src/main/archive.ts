@@ -1,5 +1,5 @@
-import { createWriteStream } from 'fs'
-import { mkdir, readdir, rename, rm } from 'fs/promises'
+import { createWriteStream, existsSync } from 'fs'
+import { mkdir, readFile, readdir, rename, rm, writeFile } from 'fs/promises'
 import { dirname, join, resolve } from 'path'
 import type { Readable } from 'stream'
 import { pipeline } from 'stream/promises'
@@ -18,12 +18,21 @@ export function safeName(name: string): string {
   return name.replace(/[<>:"/\\|?*\x00-\x1f]/g, '_').replace(/[. ]+$/, '').trim() || 'asset'
 }
 
+// Far above any FiveM pack; a zip past either one is refused before it fills the disk.
+const maxBytes = 20 * 1024 ** 3
+const maxEntries = 200_000
+
 /** Unpacks a zip into a folder. Entries that would land outside it stop the whole extract. */
 export function extractZip(zipPath: string, dest: string): Promise<number> {
   return new Promise((done, fail) => {
     yauzl.open(zipPath, { lazyEntries: true }, (err, zip) => {
       if (err || !zip) return fail(err ?? new Error('Could not open the zip'))
       let files = 0
+      let bytes = 0
+      if (zip.entryCount > maxEntries) {
+        zip.close()
+        return fail(new Error(`The zip holds ${zip.entryCount} entries, more than the ${maxEntries} allowed.`))
+      }
       const stop = (e: unknown): void => {
         zip.close()
         fail(e)
@@ -34,6 +43,9 @@ export function extractZip(zipPath: string, dest: string): Promise<number> {
         try {
           const out = resolve(dest, entry.fileName)
           if (out === resolve(dest) || !isInside(dest, out)) throw new Error(`The zip holds an unsafe path: ${entry.fileName}`)
+          // yauzl checks each entry against its declared size, so the sum can be trusted.
+          bytes += entry.uncompressedSize
+          if (bytes > maxBytes) throw new Error('The zip unpacks to more than 20 GB.')
           if (entry.fileName.endsWith('/')) {
             await mkdir(out, { recursive: true })
           } else {
@@ -52,17 +64,41 @@ export function extractZip(zipPath: string, dest: string): Promise<number> {
   })
 }
 
-/** Unpacks a zip into a folder, replacing what is there under the same top-level names. */
-export async function extractInto(zipPath: string, dir: string): Promise<string[]> {
+// Which top-level names in a download folder each asset unpacked, by asset key.
+const ownersFile = '.portal-push-unzipped.json'
+
+async function readOwners(dir: string): Promise<Record<string, string>> {
+  try {
+    const data = JSON.parse(await readFile(join(dir, ownersFile), 'utf8'))
+    return data && typeof data === 'object' ? data : {}
+  } catch {
+    return {}
+  }
+}
+
+/**
+ * Unpacks a zip into a folder under the zip's own top-level names, since a FiveM folder name is the
+ * resource name. The zip comes from the asset's author, so only a name this asset unpacked before is
+ * replaced; anything else already there stays, and the new entry gets a " (2)" name beside it.
+ */
+export async function extractInto(zipPath: string, dir: string, owner: string): Promise<string[]> {
   const temp = join(dir, `.portal-unzip-${Date.now()}`)
   try {
     await extractZip(zipPath, temp)
-    const names = await readdir(temp)
-    for (const name of names) {
-      await rm(join(dir, name), { recursive: true, force: true, maxRetries: 3 })
-      await rename(join(temp, name), join(dir, name))
+    const owners = await readOwners(dir)
+    const placed: string[] = []
+    for (const name of await readdir(temp)) {
+      let final = name
+      if (existsSync(join(dir, name))) {
+        if (owners[name.toLowerCase()] === owner) await rm(join(dir, name), { recursive: true, force: true, maxRetries: 3 })
+        else for (let n = 2; existsSync(join(dir, final)); n++) final = `${name} (${n})`
+      }
+      await rename(join(temp, name), join(dir, final))
+      owners[final.toLowerCase()] = owner
+      placed.push(final)
     }
-    return names
+    await writeFile(join(dir, ownersFile), JSON.stringify(owners, null, 2))
+    return placed
   } finally {
     await rm(temp, { recursive: true, force: true })
   }

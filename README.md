@@ -189,7 +189,7 @@ The **Download** page in the left bar has two lists: **Granted to me** (assets y
 - Each asset downloads its newest active version, the same one the portal website gives you: the newest non-beta, or the newest beta when there is nothing else. Assets that are disabled or have no active version can not be ticked.
 - Granted assets that changed since your last download carry an **Updated** tag, and **Select updated** ticks all of them.
 - Downloads run one after another. Each one is saved as `<asset name>-<version>.zip`; a zip with the same name is replaced, and two assets with the same name in one batch get a ` (2)` suffix. A cancelled or failed download leaves no half file behind.
-- With **Unzip into folders** on, every zip is unpacked into the download folder and then deleted. A folder with the same name is replaced, everything else in the folder stays.
+- With **Unzip into folders** on, every zip is unpacked into the download folder under the folder names inside it, and then deleted. The zip comes from the asset's creator, so only a folder that the same asset unpacked before is replaced. If the name is taken by anything else, the new folder is put beside it as `<name> (2)` and the old one stays. The app remembers which asset unpacked what in a `.portal-push-unzipped.json` file in that folder. Zips that would unpack to more than 20 GB or 200,000 files are refused.
 
 ## Server escrow
 

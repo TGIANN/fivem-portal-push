@@ -226,10 +226,23 @@ export interface GrantedAsset {
 export const grantDetail = (id: number): Promise<GrantedAsset> => request<GrantedAsset>('GET', `asset-grants/${id}`)
 
 /** Both lists come in pages; the portal website asks for one page at a time. */
+/** A list read that retries when the portal times out (it answers 500 after about 10 seconds when busy). */
+async function readPage(path: string): Promise<Record<string, unknown>> {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await request<Record<string, unknown>>('GET', path)
+    } catch (e) {
+      if (attempt >= 3 || e instanceof AuthError || !/failed \(5\d\d\)/.test(String(e))) throw e
+      await new Promise((r) => setTimeout(r, attempt * 2000))
+    }
+  }
+}
+
+// The portal website's own order for these lists; the app sorts them again for display.
 async function allPages<T>(path: string, key: 'items' | 'grants'): Promise<T[]> {
   const out: T[] = []
   for (let page = 1; ; page++) {
-    const data = await request<Record<string, unknown>>('GET', `${path}?page=${page}&search=&sort=asset.name&direction=asc`)
+    const data = await readPage(`${path}?page=${page}&search=&sort=asset.updated_at&direction=desc`)
     out.push(...((data[key] as T[] | undefined) ?? []))
     const pages = typeof data.page_count === 'number' ? data.page_count : 1
     if (page >= pages || page >= 100) return out

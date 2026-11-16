@@ -109,7 +109,7 @@ async function downloadOne(row: Listed, dir: string, claim: (name: string) => st
   if (!extract) return `Saved ${zipPath.split(/[\\/]/).pop()}`
   emit({ key: item.key, status: 'running', message: 'Unpacking', version: label })
   try {
-    const names = await extractInto(zipPath, dir)
+    const names = await extractInto(zipPath, dir, item.key)
     return `Unpacked to ${names.join(', ')}`
   } finally {
     await rm(zipPath, { force: true })

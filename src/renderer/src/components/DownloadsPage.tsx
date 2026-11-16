@@ -320,7 +320,7 @@ export default function DownloadsPage({ config, auth, account, waiting, onLogin,
                 </Group>
                 <p className="-mt-2.5 px-4 text-caption text-label-2">
                   {config.downloadExtract
-                    ? 'Each zip is unpacked here and then deleted. A folder with the same name is replaced.'
+                    ? 'Each zip is unpacked here and then deleted. Only a folder the same asset unpacked before is replaced; anything else gets a (2) folder beside it.'
                     : 'Saved as <name>-<version>.zip. A zip with the same name is replaced.'}
                 </p>
 
