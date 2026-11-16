@@ -1,10 +1,10 @@
 import { app } from 'electron'
-import { existsSync, statSync } from 'fs'
+import { existsSync, realpathSync, statSync } from 'fs'
 import { rm } from 'fs/promises'
 import { homedir, tmpdir } from 'os'
 import { basename, join, parse, resolve } from 'path'
 import type { EncryptJob, EncryptProgress, EncryptStepId } from '../shared/types'
-import { encryptChangelog, pickRunVersion } from '../shared/version'
+import { encryptChangelog, ownVersion, pickRunVersion } from '../shared/version'
 import { mirrorInto, pickPack } from './archive'
 import { isInside } from './bundle'
 import { scanSecrets } from './checks'
@@ -21,15 +21,26 @@ class Cancelled extends Error {}
 const mb = (bytes: number): string => `${(bytes / 1024 / 1024).toFixed(1)} MB`
 
 /** The target is emptied on every run, so it can not be a folder that holds anything else of value. */
+// Where a path really is, through junctions and links; a folder that does not exist yet as written.
+function real(path: string): string {
+  try {
+    return realpathSync.native(path)
+  } catch {
+    return resolve(path)
+  }
+}
+
 export function folderProblem(job: Pick<EncryptJob, 'source' | 'target'>): string | null {
-  const source = job.source && resolve(job.source)
-  const target = job.target && resolve(job.target)
+  const source = job.source && real(job.source)
+  const target = job.target && real(job.target)
   if (target) {
     if (parse(target).root === target) return 'The target can not be a whole drive.'
     for (const kept of [homedir(), app.getPath('userData'), app.getPath('desktop'), app.getPath('documents'), app.getPath('downloads')]) {
-      if (isInside(target, kept)) return `The target can not be ${target}, because everything in it is replaced.`
+      if (isInside(target, real(kept))) return `The target can not be ${target}, because everything in it is replaced.`
     }
     if (source && (isInside(source, target) || isInside(target, source))) return 'The two folders can not be the same folder or sit inside each other.'
+    // The run unpacks into these two folders beside the target and deletes them afterwards.
+    if (source && [`${target}.portal-new`, `${target}.portal-old`].some((side) => isInside(side, source))) return 'The source can not be a folder the run uses beside the target.'
   }
   if (!source) return 'Pick the folder to encrypt.'
   if (!existsSync(source) || !statSync(source).isDirectory()) return `${source} does not exist.`
@@ -44,12 +55,18 @@ export function jobProblem(job: EncryptJob): string | null {
   return null
 }
 
-export async function runEncrypt(job: EncryptJob, emit: (p: EncryptProgress) => void, cancelled: () => boolean): Promise<{ message: string; version: string }> {
+export async function runEncrypt(
+  job: EncryptJob,
+  emit: (p: EncryptProgress) => void,
+  cancelled: () => boolean,
+  uploaded: (versionId: number, version: string) => void
+): Promise<{ message: string; version: string }> {
   const problem = jobProblem(job)
   if (problem) throw new Error(problem)
   const assetId = job.assetId!
-  const source = resolve(job.source)
-  const target = resolve(job.target)
+  // The folders the checks passed, not a junction that could be pointed elsewhere.
+  const source = real(job.source)
+  const target = real(job.target)
 
   let current: EncryptStepId = 'scan'
   const step = (id: EncryptStepId, status: EncryptProgress['status'], message?: string, progress?: number): void => {
@@ -93,7 +110,7 @@ export async function runEncrypt(job: EncryptJob, emit: (p: EncryptProgress) => 
     stop()
     step('versions', 'running')
     const detail = await assetDetail(assetId)
-    const plan = pickRunVersion(detail.versions ?? [])
+    const plan = pickRunVersion(detail.versions ?? [], ownVersion(job))
     if ('error' in plan) throw new Error(plan.error)
     uploadedVersion = plan.version
     if (plan.replace) {
@@ -116,6 +133,7 @@ export async function runEncrypt(job: EncryptJob, emit: (p: EncryptProgress) => 
       }
     )
     partialUpload = null
+    uploaded(upload.versionId, uploadedVersion)
     step('upload', 'done', mb(zip.size), 1)
 
     step('process', 'running', 'Waiting for the portal to encrypt the scripts')

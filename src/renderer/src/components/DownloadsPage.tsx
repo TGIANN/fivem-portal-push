@@ -321,7 +321,7 @@ export default function DownloadsPage({ config, auth, account, waiting, onLogin,
                 <p className="-mt-2.5 px-4 text-caption text-label-2">
                   {config.downloadExtract
                     ? 'Each zip is unpacked here and then deleted. Only a folder the same asset unpacked before is replaced; anything else gets a (2) folder beside it.'
-                    : 'Saved as <name>-<version>.zip. A zip with the same name is replaced.'}
+                    : 'Saved as <name>-<version>.zip. A zip that is already there is kept, and the new one gets a (2) name.'}
                 </p>
 
                 <div className="flex flex-col gap-2.5 rounded-[10px] bg-group p-4">

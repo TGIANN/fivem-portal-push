@@ -22,7 +22,7 @@ import { scanScripts } from './scripts'
 import { setSecret } from './secrets'
 import { getConfig, updateConfig } from './store'
 import { apiRoles, checkTarget, discordRoles, imageExtensions, postUpdate, tebexPackages, webhookPattern } from './updates'
-import { isBetaVersion, versionFormat } from '../shared/version'
+import { isBetaVersion, ownVersion, versionFormat } from '../shared/version'
 import { log, logFile } from './log'
 
 let win: BrowserWindow | null = null
@@ -215,6 +215,7 @@ const sendDownload = (p: DownloadProgress): void => win?.webContents.send('downl
 const savedFiles = new Set<string>()
 
 handle('portal:downloadVersion', async (assetId: number, versionId: number) => {
+  if (!Number.isInteger(assetId) || !Number.isInteger(versionId)) throw new Error('Bad version')
   const detail = await assetDetail(assetId)
   const version = detail.versions?.find((v) => v.id === versionId)
   if (!version) throw new Error('This version is no longer on the portal.')
@@ -297,6 +298,7 @@ handle('encrypt:add', () =>
 )
 handle('encrypt:remove', (id: string) => updateConfig((cfg) => (cfg.encryptJobs = cfg.encryptJobs.filter((j) => j.id !== id))))
 handle('encrypt:pick', async (id: string, which: 'source' | 'target') => {
+  if (which !== 'source' && which !== 'target') throw new Error('Bad folder')
   const job = jobOf(id)
   const res = await dialog.showOpenDialog(win!, {
     title: which === 'source' ? 'Folder to encrypt' : 'Folder for the encrypted scripts (everything in it is replaced)',
@@ -320,7 +322,7 @@ handle('encrypt:update', (id: string, patch: { assetId?: number; assetName?: str
         ? j
         : {
             ...j,
-            ...(typeof patch.assetId === 'number' && typeof patch.assetName === 'string' ? { assetId: patch.assetId, assetName: patch.assetName } : {})
+            ...(Number.isInteger(patch.assetId) && typeof patch.assetName === 'string' ? { assetId: patch.assetId as number, assetName: patch.assetName } : {})
           }
     )
   })
@@ -333,11 +335,29 @@ handle('encrypt:open', (id: string, which: 'source' | 'target') => {
 handle('encrypt:run', async (id: string) => {
   if (pushing) throw new Error('A push or another encryption is already running')
   const job = jobOf(id)
+  const previous = ownVersion(job)
+  // The first run on an asset publishes the folder to everyone who has the asset, so it is confirmed here, outside the page.
+  if (!previous && job.assetId) {
+    const { response } = await dialog.showMessageBox(win!, {
+      type: 'question',
+      buttons: ['Upload', 'Cancel'],
+      defaultId: 1,
+      cancelId: 1,
+      title: 'Escrow',
+      message: `Upload ${basename(job.source)} to ${job.assetName ?? `asset ${job.assetId}`}?`,
+      detail: 'It becomes a new active version of that asset, and everyone the asset is granted to can download it. Later runs replace only this version.'
+    })
+    if (response !== 0) return getConfig()
+  }
   pushing = true
   cancelPush = false
-  const save = (ok: boolean, message: string, version?: string): void => {
+  // Survives a failed run, so the next one still replaces the version this job uploaded.
+  let uploaded = { versionId: previous?.id, version: previous?.version }
+  const save = (ok: boolean, message: string): void => {
     updateConfig((cfg) => {
-      cfg.encryptJobs = cfg.encryptJobs.map((j) => (j.id === id ? { ...j, lastRun: { at: new Date().toISOString(), ok, message, version } } : j))
+      cfg.encryptJobs = cfg.encryptJobs.map((j) =>
+        j.id === id ? { ...j, lastRun: { at: new Date().toISOString(), ok, message, assetId: job.assetId ?? undefined, ...uploaded } } : j
+      )
     })
   }
   try {
@@ -348,9 +368,10 @@ handle('encrypt:run', async (id: string) => {
         if (p.status !== 'running' || p.progress === undefined) log('encrypt', `${p.step} ${p.status}${p.message ? ': ' + p.message : ''}`)
         win?.webContents.send('encrypt:progress', p)
       },
-      () => cancelPush
+      () => cancelPush,
+      (versionId, version) => (uploaded = { versionId, version })
     )
-    save(true, result.message, result.version)
+    save(true, result.message)
     return getConfig()
   } catch (e) {
     save(false, e instanceof Error ? e.message : String(e))

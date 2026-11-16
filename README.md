@@ -188,8 +188,8 @@ The **Download** page in the left bar has two lists: **Granted to me** (assets y
 
 - Each asset downloads its newest active version, the same one the portal website gives you: the newest non-beta, or the newest beta when there is nothing else. Assets that are disabled or have no active version can not be ticked.
 - Granted assets that changed since your last download carry an **Updated** tag, and **Select updated** ticks all of them.
-- Downloads run one after another. Each one is saved as `<asset name>-<version>.zip`; a zip with the same name is replaced, and two assets with the same name in one batch get a ` (2)` suffix. A cancelled or failed download leaves no half file behind.
-- With **Unzip into folders** on, every zip is unpacked into the download folder under the folder names inside it, and then deleted. The zip comes from the asset's creator, so only a folder that the same asset unpacked before is replaced. If the name is taken by anything else, the new folder is put beside it as `<name> (2)` and the old one stays. The app remembers which asset unpacked what in a `.portal-push-unzipped.json` file in that folder. Zips that would unpack to more than 20 GB or 200,000 files are refused.
+- Downloads run one after another. Each one is saved as `<asset name>-<version>.zip`. A file that is already there is never overwritten: the new zip gets a ` (2)` suffix, as does the second of two assets with the same name in one batch. A cancelled or failed download leaves no half file behind.
+- With **Unzip into folders** on, every zip is unpacked into the download folder under the folder names inside it, and then deleted. The zip comes from the asset's creator, so only a folder that the same asset unpacked before is replaced. If the name is taken by anything else, the new folder is put beside it as `<name> (2)` and the old one stays. The app remembers which asset unpacked what in a `.portal-push-unzipped.json` file in that folder. Zips that would unpack to more than 8 GB or 200,000 files are refused.
 
 ## Server escrow
 
@@ -199,7 +199,7 @@ Some servers keep their own scripts open in one folder and run copies encrypted 
 - **Encrypted scripts go to:** the folder the server runs, for example `resources/[our-cfx]`.
 - **Asset:** a portal asset that only holds this folder, with one placeholder version such as `1.0.0`.
 
-The version number is picked for you, and the card shows it before you run. A version an earlier run uploaded (its changelog starts with `Encrypted from`) is replaced under the same number. Any other version is never touched: the first run adds the next major number beside them, for example `2.0.0` next to `1.0.0`.
+The version number is picked for you, and the card shows it before you run. Only the version the pair's last run uploaded to that asset is replaced, under the same number. Any other version is never touched: the first run adds the next major number beside them, for example `2.0.0` next to `1.0.0`, and asks you to confirm first, since the new version can be downloaded by everyone the asset is granted to.
 
 Pressing **Encrypt**:
 

@@ -63,8 +63,10 @@ export interface EncryptRun {
   at: string
   ok: boolean
   message: string
-  /** The portal version the run uploaded. */
+  /** The portal version the run uploaded, and where; only that version is replaced by the next run. */
   version?: string
+  assetId?: number
+  versionId?: number
 }
 
 /** A folder of scripts sent through the portal for encryption, then unpacked into another folder. */

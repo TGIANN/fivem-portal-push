@@ -3,7 +3,7 @@ import { faArrowRight, faFolderOpen, faLock, faPlay, faPlus, faXmark } from '@fo
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useEffect, useState, type ReactNode } from 'react'
 import type { AppConfig, AuthState, EncryptJob, EncryptProgress, EncryptStepId } from '../../../shared/types'
-import { pickRunVersion } from '../../../shared/version'
+import { ownVersion, pickRunVersion } from '../../../shared/version'
 import { cn, errorMessage, timeAgo } from '@/lib'
 import AssetPicker from './AssetPicker'
 import LoginNotice from './LoginNotice'
@@ -168,7 +168,10 @@ interface CardProps {
 }
 
 /** What the next run will do with the asset's versions, worked out the same way the run does it. */
-function useVersionPlan(assetId: number | null, refresh: string | undefined): string | null {
+function useVersionPlan(job: EncryptJob): string | null {
+  const { assetId } = job
+  const own = ownVersion(job)
+  const ownKey = JSON.stringify(own)
   const [plan, setPlan] = useState<string | null>(null)
   useEffect(() => {
     setPlan(null)
@@ -178,21 +181,21 @@ function useVersionPlan(assetId: number | null, refresh: string | undefined): st
       .assetDetail(assetId)
       .then((detail) => {
         if (!live) return
-        const p = pickRunVersion(detail.versions ?? [])
+        const p = pickRunVersion(detail.versions ?? [], own)
         setPlan('error' in p ? p.error : p.replace ? `Replaces ${p.version}` : `Adds ${p.version}`)
       })
       .catch((e) => live && setPlan(`Could not read the asset: ${errorMessage(e)}`))
     return () => {
       live = false
     }
-  }, [assetId, refresh])
+  }, [assetId, ownKey])
   return plan
 }
 
 function JobCard({ job, steps, error, running, cancelling, onRun, onCancel, onAct, onAuthError }: CardProps) {
   const isRunning = running === job.id
   const ready = Boolean(job.source && job.target && job.assetId)
-  const plan = useVersionPlan(job.assetId, job.lastRun?.at)
+  const plan = useVersionPlan(job)
   const name = (path: string) => path.split(/[\\/]/).pop()
 
   const folderRow = (which: 'source' | 'target', label: string) => (

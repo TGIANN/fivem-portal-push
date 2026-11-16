@@ -63,13 +63,27 @@ export function latestVersion(versions: string[]): string | null {
 /** Every version an encrypt run uploads has this changelog prefix; only those are ever replaced. */
 export const encryptChangelog = 'Encrypted from '
 
+/** The version an earlier run of a job uploaded to its current asset, or null when it never ran there. */
+export function ownVersion(job: { assetId: number | null; lastRun: { assetId?: number; versionId?: number; version?: string } | null }): { id?: number; version?: string } | null {
+  const run = job.lastRun
+  // Runs saved before the asset was recorded count as runs on the current asset.
+  if (!run || (run.assetId !== undefined && run.assetId !== job.assetId)) return null
+  return { id: run.versionId, version: run.version }
+}
+
 /**
- * The version an encrypt run uploads. A version an earlier run uploaded is replaced under the same
- * number; any other version is never touched, and the next major number is added beside it.
+ * The version an encrypt run uploads. Only the version an earlier run uploaded is replaced, under the
+ * same number; any other version is never touched, and the next major number is added beside it.
  */
-export function pickRunVersion(versions: PortalVersion[]): { version: string; replace: PortalVersion | null } | { error: string } {
-  const own = versions.filter((v) => v.changelog?.startsWith(encryptChangelog)).sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0]
-  if (own) return { version: own.version, replace: own }
+export function pickRunVersion(versions: PortalVersion[], own: { id?: number; version?: string } | null): { version: string; replace: PortalVersion | null } | { error: string } {
+  const made = versions.filter((v) => v.changelog?.startsWith(encryptChangelog))
+  const found = !own
+    ? undefined
+    : own.id !== undefined
+      ? versions.find((v) => v.id === own.id)
+      : // Older runs recorded no id: match their number, or failing that their newest upload.
+        (made.find((v) => v.version === own.version) ?? (own.version ? undefined : made.sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at))[0]))
+  if (found) return { version: found.version, replace: found }
   if (versions.length >= 5) return { error: 'The asset already has 5 versions and none of them was uploaded by Encrypt. Delete one on the portal, then run again.' }
   return { version: bumpVersion(latestVersion(versions.map((v) => v.version)) ?? '0.0.0', 'major'), replace: null }
 }

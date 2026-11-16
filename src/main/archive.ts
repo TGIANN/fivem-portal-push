@@ -19,7 +19,7 @@ export function safeName(name: string): string {
 }
 
 // Far above any FiveM pack; a zip past either one is refused before it fills the disk.
-const maxBytes = 20 * 1024 ** 3
+const maxBytes = 8 * 1024 ** 3
 const maxEntries = 200_000
 
 /** Unpacks a zip into a folder. Entries that would land outside it stop the whole extract. */
@@ -45,7 +45,7 @@ export function extractZip(zipPath: string, dest: string): Promise<number> {
           if (out === resolve(dest) || !isInside(dest, out)) throw new Error(`The zip holds an unsafe path: ${entry.fileName}`)
           // yauzl checks each entry against its declared size, so the sum can be trusted.
           bytes += entry.uncompressedSize
-          if (bytes > maxBytes) throw new Error('The zip unpacks to more than 20 GB.')
+          if (bytes > maxBytes) throw new Error('The zip unpacks to more than 8 GB.')
           if (entry.fileName.endsWith('/')) {
             await mkdir(out, { recursive: true })
           } else {
@@ -64,8 +64,9 @@ export function extractZip(zipPath: string, dest: string): Promise<number> {
   })
 }
 
-// Which top-level names in a download folder each asset unpacked, by asset key.
+// Which top-level names in a download folder each asset unpacked: exact name to asset key.
 const ownersFile = '.portal-push-unzipped.json'
+const tempPrefix = '.portal-unzip-'
 
 async function readOwners(dir: string): Promise<Record<string, string>> {
   try {
@@ -82,19 +83,24 @@ async function readOwners(dir: string): Promise<Record<string, string>> {
  * replaced; anything else already there stays, and the new entry gets a " (2)" name beside it.
  */
 export async function extractInto(zipPath: string, dir: string, owner: string): Promise<string[]> {
-  const temp = join(dir, `.portal-unzip-${Date.now()}`)
+  const temp = join(dir, `${tempPrefix}${Date.now()}`)
   try {
     await extractZip(zipPath, temp)
     const owners = await readOwners(dir)
     const placed: string[] = []
     for (const name of await readdir(temp)) {
+      // The app's own bookkeeping names are never taken from a zip.
+      if (name.toLowerCase() === ownersFile || name.toLowerCase().startsWith(tempPrefix)) continue
       let final = name
       if (existsSync(join(dir, name))) {
-        if (owners[name.toLowerCase()] === owner) await rm(join(dir, name), { recursive: true, force: true, maxRetries: 3 })
+        // Windows matches names without case, so the folder there may be spelled differently;
+        // it is only replaced when it is exactly the name this asset placed.
+        const exact = (await readdir(dir)).includes(name)
+        if (exact && owners[name] === owner) await rm(join(dir, name), { recursive: true, force: true, maxRetries: 3 })
         else for (let n = 2; existsSync(join(dir, final)); n++) final = `${name} (${n})`
       }
       await rename(join(temp, name), join(dir, final))
-      owners[final.toLowerCase()] = owner
+      owners[final] = owner
       placed.push(final)
     }
     await writeFile(join(dir, ownersFile), JSON.stringify(owners, null, 2))
@@ -115,6 +121,7 @@ export async function mirrorInto(zipPath: string, target: string, wrapper?: stri
   await rm(staging, { recursive: true, force: true })
   await rm(old, { recursive: true, force: true })
   let keepStaging = false
+  let keepOld = false
   try {
     const files = await extractZip(zipPath, staging)
     if (files === 0) throw new Error('The portal zip is empty, so the target folder was left as it was.')
@@ -143,12 +150,21 @@ export async function mirrorInto(zipPath: string, target: string, wrapper?: stri
     try {
       await rename(root, target)
     } catch (e) {
-      if (targetMoved) await rename(old, target).catch(() => undefined)
+      if (targetMoved) {
+        const restored = await rename(old, target).then(
+          () => true,
+          () => false
+        )
+        if (!restored) {
+          keepOld = true
+          throw new Error(`Could not swap in the new scripts or put the old ones back (${e instanceof Error ? e.message : String(e)}). The old scripts are in ${old}.`)
+        }
+      }
       throw e
     }
     return files
   } finally {
     if (!keepStaging) await rm(staging, { recursive: true, force: true })
-    await rm(old, { recursive: true, force: true, maxRetries: 3 }).catch(() => undefined)
+    if (!keepOld) await rm(old, { recursive: true, force: true, maxRetries: 3 }).catch(() => undefined)
   }
 }

@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto'
 import { existsSync } from 'fs'
 import { rm } from 'fs/promises'
 import { join } from 'path'
@@ -104,7 +105,8 @@ async function downloadOne(row: Listed, dir: string, claim: (name: string) => st
   const url = await packDownloadUrl(item.entity, item.entityId, version.id, pack.id)
   const label = version.version ?? ''
 
-  const zipPath = join(dir, `${claim(label ? `${safeName(item.name)}-${safeName(label)}` : safeName(item.name))}.zip`)
+  // Unpacked zips are deleted afterwards, so they get a name no file of yours can have.
+  const zipPath = extract ? join(dir, `.portal-dl-${randomUUID()}.zip`) : join(dir, `${claim(label ? `${safeName(item.name)}-${safeName(label)}` : safeName(item.name))}.zip`)
   await fetchToFile(url, zipPath, (received, total) => emit({ key: item.key, status: 'running', progress: total ? received / total : undefined, version: label }), cancelled)
   if (!extract) return `Saved ${zipPath.split(/[\\/]/).pop()}`
   emit({ key: item.key, status: 'running', message: 'Unpacking', version: label })
@@ -121,11 +123,11 @@ export async function runDownloads(keys: string[], dir: string, extract: boolean
   if (!existsSync(dir)) throw new Error(`${dir} does not exist. Pick the download folder again.`)
   let done = 0
   let failed = 0
-  // Two assets with the same name in one batch must not write over each other.
+  // A zip never writes over a file that is already there, or over another one in the same batch.
   const used = new Set<string>()
   const claim = (base: string): string => {
     let name = base
-    for (let n = 2; used.has(name.toLowerCase()); n++) name = `${base} (${n})`
+    for (let n = 2; used.has(name.toLowerCase()) || existsSync(join(dir, `${name}.zip`)); n++) name = `${base} (${n})`
     used.add(name.toLowerCase())
     return name
   }
