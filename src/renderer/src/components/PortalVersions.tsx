@@ -1,7 +1,7 @@
 import { faTrashCan } from '@fortawesome/free-regular-svg-icons'
-import { faTriangleExclamation } from '@fortawesome/free-solid-svg-icons'
+import { faCircleNotch, faDownload, faTriangleExclamation } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
-import type { PortalAssetDetail } from '../../../shared/types'
+import type { DownloadProgress, PortalAssetDetail } from '../../../shared/types'
 import { timeAgo } from '@/lib'
 import { Row, Tag } from './ui/group'
 import { Tooltip } from './ui/tooltip'
@@ -15,9 +15,15 @@ interface Props {
   replacing: string | null
   onReplace: (version: string) => void
   disabled: boolean
+  downloads: Record<string, DownloadProgress>
+  onDownload: (versionId: number) => void
 }
 
-export default function PortalVersions({ detail, loading, error, onRetry, replacing, onReplace, disabled }: Props) {
+const hoverAction = 'cursor-pointer text-footnote font-medium opacity-0 transition-opacity duration-150 group-hover:opacity-100 hover:underline focus-visible:opacity-100'
+
+export const percent = (progress: number | undefined): string => (progress === undefined ? '' : `${Math.round(progress * 100)}%`)
+
+export default function PortalVersions({ detail, loading, error, onRetry, replacing, onReplace, disabled, downloads, onDownload }: Props) {
   if (error) {
     return (
       <Row>
@@ -70,16 +76,27 @@ export default function PortalVersions({ detail, loading, error, onRetry, replac
             {replacing ? 'Replaced on this push' : 'Removed on next push'}
           </span>
         )}
-        {canReplace && (
-          <button
-            onClick={() => onReplace(v.version)}
-            aria-label={`Replace ${v.version}`}
-            className="ml-auto cursor-pointer text-footnote font-medium text-accent opacity-0 transition-opacity duration-150 group-hover:opacity-100 hover:underline focus-visible:opacity-100"
-          >
-            Replace
-          </button>
-        )}
-        <span className={`${canReplace ? '' : 'ml-auto '}text-footnote text-label-2 tabular-nums`} title={new Date(v.created_at).toLocaleString()}>
+        <span className="ml-auto flex items-center gap-3">
+          {canReplace && (
+            <button onClick={() => onReplace(v.version)} aria-label={`Replace ${v.version}`} className={`${hoverAction} text-accent`}>
+              Replace
+            </button>
+          )}
+          {v.state === 'active' &&
+            (downloads[`version:${v.id}`]?.status === 'running' ? (
+              <span className="text-footnote text-label-2 tabular-nums">
+                <FontAwesomeIcon icon={faCircleNotch} spin className="mr-1.5" />
+                {percent(downloads[`version:${v.id}`].progress)}
+              </span>
+            ) : (
+              <Tooltip content={`Download ${v.version}`}>
+                <button onClick={() => onDownload(v.id)} aria-label={`Download ${v.version}`} className={`${hoverAction} text-label-2 hover:text-label`}>
+                  <FontAwesomeIcon icon={faDownload} />
+                </button>
+              </Tooltip>
+            ))}
+        </span>
+        <span className="text-footnote text-label-2 tabular-nums" title={new Date(v.created_at).toLocaleString()}>
           {timeAgo(v.created_at)}
         </span>
       </Row>

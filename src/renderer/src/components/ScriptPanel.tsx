@@ -1,8 +1,8 @@
-import { faArrowUpFromBracket, faRotate, faXmark } from '@fortawesome/free-solid-svg-icons'
+import { faArrowUpFromBracket, faDownload, faRotate, faXmark } from '@fortawesome/free-solid-svg-icons'
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { AppConfig, AuthState, PushProgress, PushStepId, ScriptInfo, UpdatePost } from '../../../shared/types'
-import { bumpVersion, compareVersions, isBetaVersion, latestVersion, versionFormat } from '../../../shared/version'
-import { formatChanges, useAssetLink, useChecks, useGitChanges, useZipTree } from '@/hooks'
+import { bumpVersion, compareVersions, isBetaVersion, latestVersion, pickVersion, versionFormat } from '../../../shared/version'
+import { formatChanges, useAssetLink, useChecks, useDownloadProgress, useGitChanges, useZipTree } from '@/hooks'
 import { errorMessage } from '@/lib'
 import AssetPicker from './AssetPicker'
 import BundleSection from './BundleSection'
@@ -51,6 +51,9 @@ export default function ScriptPanel({ script, config, auth, account, onAuthError
   const [retrying, setRetrying] = useState(false)
   const live = useRef(false)
   const patchDraft = useCallback((patch: Partial<UpdateDraft>) => setDraft((d) => ({ ...d, ...patch })), [])
+  const downloads = useDownloadProgress()
+  const [saved, setSaved] = useState<{ path?: string; error?: string } | null>(null)
+  const latest = pickVersion(link.detail?.versions)
 
   const portalVersions = useMemo(() => link.detail?.versions?.map((v) => v.version) ?? [], [link.detail])
   const portalLatest = latestVersion(portalVersions)
@@ -153,6 +156,18 @@ export default function ScriptPanel({ script, config, auth, account, onAuthError
     window.api.cancelPush()
   }
 
+  const downloadVersion = async (versionId: number) => {
+    if (!link.asset) return
+    setSaved(null)
+    try {
+      const path = await window.api.downloadVersion(link.asset.assetId, versionId)
+      if (path) setSaved({ path })
+    } catch (e) {
+      setSaved({ error: errorMessage(e) })
+      onAuthError(e)
+    }
+  }
+
   const retryUpdate = async () => {
     const base = updatePost()
     if (!base) return
@@ -218,7 +233,31 @@ export default function ScriptPanel({ script, config, auth, account, onAuthError
             </Group>
           )}
 
-          <Group header="Cfx.re portal" footer="The portal keeps up to 5 versions. When all 5 are used, the oldest one is removed before the new upload.">
+          <Group
+            header="Cfx.re portal"
+            aside={
+              link.asset &&
+              latest && (
+                <Button variant="plain" size="sm" icon={faDownload} busy={downloads.progress[`version:${latest.id}`]?.status === 'running'} onClick={() => downloadVersion(latest.id)}>
+                  Download latest {latest.version}
+                </Button>
+              )
+            }
+            footer={
+              saved?.error ? (
+                <span className="text-red">{saved.error}</span>
+              ) : saved?.path ? (
+                <span>
+                  Saved {saved.path.split(/[\\/]/).pop()}.{' '}
+                  <button onClick={() => window.api.showDownloaded(saved.path!)} className="cursor-pointer font-medium text-accent hover:underline">
+                    Show in folder
+                  </button>
+                </span>
+              ) : (
+                'The portal keeps up to 5 versions. When all 5 are used, the oldest one is removed before the new upload.'
+              )
+            }
+          >
             <AssetPicker value={link.asset} autoMatched={link.autoMatched} disabled={auth !== 'loggedIn'} onChange={link.pick} onError={onAuthError} />
             {link.asset && (
               <PortalVersions
@@ -233,6 +272,8 @@ export default function ScriptPanel({ script, config, auth, account, onAuthError
                   setReplaceVersion(v)
                   setChangelog(null)
                 }}
+                downloads={downloads.progress}
+                onDownload={downloadVersion}
               />
             )}
           </Group>

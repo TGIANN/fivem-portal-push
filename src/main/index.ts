@@ -1,17 +1,21 @@
 import './paths'
 import { app, BrowserWindow, dialog, ipcMain, nativeImage, shell } from 'electron'
+import { randomUUID } from 'crypto'
 import { existsSync, statSync } from 'fs'
 import { basename, dirname, join, resolve } from 'path'
 import { cleanBuildDirs } from '../shared/buildDirs'
-import type { BundleSpec, PushRequest, SecretName, TebexPackage, UpdateImage, UpdatePost, UpdateSettings, UpdateTarget } from '../shared/types'
+import type { BundleSpec, DownloadEntity, DownloadProgress, EncryptJob, PushRequest, SecretName, TebexPackage, UpdateImage, UpdatePost, UpdateSettings, UpdateTarget } from '../shared/types'
 import { checkAppUpdate, downloadAppUpdate, getAppUpdate, installAppUpdate, startAppUpdates } from './appUpdate'
+import { pickPack, safeName } from './archive'
 import { browserLogin, cancelBrowserLogin, extensionDir } from './browserLogin'
 import { isInside, readBundle, toSource, writeBundle } from './bundle'
 import { runChecks } from './checks'
+import { grantVersions, listDownloadables, runDownloads } from './downloads'
+import { folderProblem, runEncrypt } from './encrypt'
 import { changedFiles, gitRoot } from './git'
 import { scriptHistory } from './history'
 import { compileRules, ignoreRules, isExcluded, writeLocalPatterns, zipTree } from './ignore'
-import { assetDetail, AuthError, checkAuth, listAssets, login, logout } from './portal'
+import { assetDetail, AuthError, checkAuth, fetchToFile, listAssets, login, logout, packDownloadUrl } from './portal'
 import { push } from './push'
 import { takeScreenshots } from './screenshots'
 import { scanScripts } from './scripts'
@@ -22,8 +26,11 @@ import { isBetaVersion, versionFormat } from '../shared/version'
 import { log, logFile } from './log'
 
 let win: BrowserWindow | null = null
+// A push and a folder encryption both upload; only one runs at a time.
 let pushing = false
 let cancelPush = false
+let downloading = false
+let cancelDownloads = false
 
 function scriptArg(argv: string[]): string | null {
   for (const arg of argv.slice(app.isPackaged ? 1 : 2)) {
@@ -200,6 +207,161 @@ handle('push:start', async (req: PushRequest) => {
 handle('push:cancel', () => {
   cancelPush = true
 })
+
+// ---------- Downloads ----------
+
+const sendDownload = (p: DownloadProgress): void => win?.webContents.send('download:progress', p)
+// Only files saved by the app can be shown in Explorer from the window.
+const savedFiles = new Set<string>()
+
+handle('portal:downloadVersion', async (assetId: number, versionId: number) => {
+  const detail = await assetDetail(assetId)
+  const version = detail.versions?.find((v) => v.id === versionId)
+  if (!version) throw new Error('This version is no longer on the portal.')
+  if (version.state !== 'active') throw new Error(`${version.version} is not ready on the portal yet (${version.state}).`)
+  const pack = pickPack(version.packs)
+  if (!pack) throw new Error(`The portal shows no download for ${version.version}.`)
+  const res = await dialog.showSaveDialog(win!, {
+    title: `Save ${detail.name} ${version.version}`,
+    defaultPath: join(app.getPath('downloads'), `${safeName(detail.name)}-${safeName(version.version)}.zip`),
+    filters: [{ name: 'Zip', extensions: ['zip'] }]
+  })
+  if (res.canceled || !res.filePath) return null
+  const key = `version:${versionId}`
+  log('download', `${detail.name} ${version.version} -> ${res.filePath}`)
+  try {
+    const url = await packDownloadUrl('assets', assetId, versionId, pack.id)
+    await fetchToFile(url, res.filePath, (received, total) => sendDownload({ key, status: 'running', progress: total ? received / total : undefined }), () => false)
+  } catch (e) {
+    sendDownload({ key, status: 'error', message: e instanceof Error ? e.message : String(e) })
+    throw e
+  }
+  savedFiles.add(res.filePath)
+  sendDownload({ key, status: 'done' })
+  return res.filePath
+})
+
+handle('download:show', (path: string) => {
+  if (!savedFiles.has(path)) throw new Error('Only files this app saved can be shown')
+  shell.showItemInFolder(path)
+})
+
+handle('downloads:list', (entity: DownloadEntity) => {
+  if (entity !== 'assets' && entity !== 'asset-grants') throw new Error('Unknown list')
+  return listDownloadables(entity)
+})
+handle('downloads:versions', (keys: string[]) => {
+  if (!Array.isArray(keys) || keys.some((k) => typeof k !== 'string')) throw new Error('Bad list')
+  return grantVersions(keys)
+})
+handle('downloads:pickDir', async () => {
+  const res = await dialog.showOpenDialog(win!, { title: 'Download assets to', properties: ['openDirectory', 'createDirectory'], defaultPath: getConfig().downloadDir ?? app.getPath('downloads') })
+  if (res.canceled || !res.filePaths[0]) return getConfig()
+  return updateConfig((cfg) => (cfg.downloadDir = res.filePaths[0]))
+})
+handle('downloads:extract', (on: boolean) => updateConfig((cfg) => (cfg.downloadExtract = Boolean(on))))
+handle('downloads:open', () => {
+  const dir = getConfig().downloadDir
+  if (!dir) throw new Error('Pick a download folder first')
+  return shell.openPath(dir)
+})
+handle('downloads:start', async (keys: string[]) => {
+  if (downloading) throw new Error('A download is already running')
+  const { downloadDir, downloadExtract } = getConfig()
+  if (!downloadDir) throw new Error('Pick a download folder first')
+  downloading = true
+  cancelDownloads = false
+  try {
+    log('download', `bulk ${keys.length} items -> ${downloadDir} extract=${downloadExtract}`)
+    return await runDownloads(keys, downloadDir, downloadExtract, sendDownload, () => cancelDownloads)
+  } finally {
+    downloading = false
+  }
+})
+handle('downloads:cancel', () => {
+  cancelDownloads = true
+})
+
+// ---------- Folder encryption ----------
+
+const jobOf = (id: string): EncryptJob => {
+  const job = getConfig().encryptJobs.find((j) => j.id === id)
+  if (!job) throw new Error('This folder pair no longer exists')
+  return job
+}
+
+handle('encrypt:add', () =>
+  updateConfig((cfg) => {
+    cfg.encryptJobs.push({ id: randomUUID(), source: '', target: '', assetId: null, assetName: null, lastRun: null })
+  })
+)
+handle('encrypt:remove', (id: string) => updateConfig((cfg) => (cfg.encryptJobs = cfg.encryptJobs.filter((j) => j.id !== id))))
+handle('encrypt:pick', async (id: string, which: 'source' | 'target') => {
+  const job = jobOf(id)
+  const res = await dialog.showOpenDialog(win!, {
+    title: which === 'source' ? 'Folder to encrypt' : 'Folder for the encrypted scripts (everything in it is replaced)',
+    defaultPath: job[which] || job.source || undefined,
+    properties: ['openDirectory', 'createDirectory']
+  })
+  if (res.canceled || !res.filePaths[0]) return getConfig()
+  const next = { ...job, [which]: res.filePaths[0] }
+  const problem = folderProblem(next)
+  // A folder still to be picked is fine here; run checks it again.
+  if (problem && !/^Pick /.test(problem)) throw new Error(problem)
+  return updateConfig((cfg) => {
+    cfg.encryptJobs = cfg.encryptJobs.map((j) => (j.id === id ? next : j))
+  })
+})
+handle('encrypt:update', (id: string, patch: { assetId?: number; assetName?: string }) => {
+  jobOf(id)
+  return updateConfig((cfg) => {
+    cfg.encryptJobs = cfg.encryptJobs.map((j) =>
+      j.id !== id
+        ? j
+        : {
+            ...j,
+            ...(typeof patch.assetId === 'number' && typeof patch.assetName === 'string' ? { assetId: patch.assetId, assetName: patch.assetName } : {})
+          }
+    )
+  })
+})
+handle('encrypt:open', (id: string, which: 'source' | 'target') => {
+  const path = jobOf(id)[which === 'source' ? 'source' : 'target']
+  if (!path) throw new Error('No folder picked yet')
+  return shell.openPath(path)
+})
+handle('encrypt:run', async (id: string) => {
+  if (pushing) throw new Error('A push or another encryption is already running')
+  const job = jobOf(id)
+  pushing = true
+  cancelPush = false
+  const save = (ok: boolean, message: string, version?: string): void => {
+    updateConfig((cfg) => {
+      cfg.encryptJobs = cfg.encryptJobs.map((j) => (j.id === id ? { ...j, lastRun: { at: new Date().toISOString(), ok, message, version } } : j))
+    })
+  }
+  try {
+    log('encrypt', `start ${job.source} -> asset ${job.assetId} -> ${job.target}`)
+    const result = await runEncrypt(
+      job,
+      (p) => {
+        if (p.status !== 'running' || p.progress === undefined) log('encrypt', `${p.step} ${p.status}${p.message ? ': ' + p.message : ''}`)
+        win?.webContents.send('encrypt:progress', p)
+      },
+      () => cancelPush
+    )
+    save(true, result.message, result.version)
+    return getConfig()
+  } catch (e) {
+    save(false, e instanceof Error ? e.message : String(e))
+    throw e
+  } finally {
+    pushing = false
+  }
+})
+handle('encrypt:cancel', () => {
+  cancelPush = true
+})
 handle('checks:run', (scriptPath: string) => runChecks(checkScript(scriptPath)))
 handle('checks:allow', (scriptPath: string, id: string, allowed: boolean) => {
   const name = basename(checkScript(scriptPath))
@@ -218,7 +380,7 @@ handle('appUpdate:get', () => getAppUpdate())
 handle('appUpdate:check', () => checkAppUpdate())
 handle('appUpdate:download', () => downloadAppUpdate())
 handle('appUpdate:install', () => {
-  if (pushing) throw new Error('Wait for the push to finish before restarting.')
+  if (pushing || downloading) throw new Error('Wait for the push, encryption or download to finish before restarting.')
   installAppUpdate()
 })
 

@@ -1,5 +1,5 @@
 import { cleanBuildDirs, defaultBuildDirs } from '../shared/buildDirs'
-import type { AppConfig, AppUpdateState, BundleItem, BundleSpec, ChangedFile, DiscordRole, TebexPackage, IgnoreRule, PortalAssetDetail, PushProgress, PushRecord, PushStepId, ScriptChecks, ScriptInfo, ZipEntry, ZipTree } from '../shared/types'
+import type { AppConfig, AppUpdateState, BundleItem, BundleSpec, ChangedFile, DiscordRole, Downloadable, DownloadProgress, EncryptProgress, EncryptStepId, TebexPackage, IgnoreRule, PortalAssetDetail, PushProgress, PushRecord, PushStepId, ScriptChecks, ScriptInfo, ZipEntry, ZipTree } from '../shared/types'
 import type { Api } from './index'
 
 const root = 'D:\\FiveM\\resources\\[tgiann]'
@@ -38,8 +38,51 @@ const config: AppConfig = {
   secretAllow: {},
   buildDirs: defaultBuildDirs,
   update: { apiDefault: true, discordDefault: true, apiUrl: 'https://tgiann.com/api/updates', tebexToken: 'demo', discordMode: 'bot', discordChannel: '813192868906532905', roleId: '1133238864895550002', allowHere: true, allowEveryone: false, apiAnnounces: true },
+  encryptJobs: [
+    {
+      id: 'demo-job',
+      source: 'D:\\FiveM\\resources\\[our-need-cfx]',
+      target: 'D:\\FiveM\\resources\\[our-cfx]',
+      assetId: 49999,
+      assetName: 'tgiann-server-pack',
+      lastRun: { at: new Date(Date.now() - 3 * 86400000).toISOString(), ok: true, message: '[our-need-cfx] is encrypted into [our-cfx] as 2.0.0.', version: '2.0.0' }
+    }
+  ],
+  downloadDir: 'D:\\FiveM\\downloads',
+  downloadExtract: true,
   secrets: { apiKey: true, botToken: true, webhookUrl: false }
 }
+
+const granted: Downloadable[] = (
+  [
+    ['bodycam', 'Northwind Studio', 2, 40, true, true],
+    ['dealership', 'Northwind Studio', 30, 200, false, true],
+    ['fuel-system', 'Lowrider Labs', 5, 90, true, true],
+    ['interiors-pack', 'Blocky Maps', 120, 300, false, true],
+    ['lockpick-minigame', 'Lowrider Labs', 60, 61, false, true],
+    ['mdt', 'Pacific Devs', 1, 15, true, true],
+    ['racing-ui', 'Pacific Devs', 14, 150, false, true],
+    ['weather-sync', 'Blocky Maps', 400, 410, false, false]
+  ] as const
+).map(([name, author, updatedDays, receivedDays, updated, active], i) => ({
+  key: `asset-grants:${90000 + i}`,
+  entity: 'asset-grants',
+  entityId: 90000 + i,
+  name,
+  author,
+  version: null,
+  updatedAt: days(updatedDays),
+  receivedAt: days(receivedDays),
+  updated,
+  unavailable: active ? null : 'No active version'
+}))
+
+const downloadListeners = new Set<(p: DownloadProgress) => void>()
+const emitDownload = (p: DownloadProgress) => downloadListeners.forEach((cb) => cb(p))
+let cancelDownloadDemo = false
+
+const encryptListeners = new Set<(p: EncryptProgress) => void>()
+let cancelEncryptDemo = false
 
 const tebexDemo: TebexPackage[] = scripts.map(([name], i) => ({
   id: 5100000 + i,
@@ -201,6 +244,16 @@ export const demoApi: Api = {
   openExtensionFolder: async () => '',
   listAssets: async (search) => assets.filter((a) => a.name.includes(search.toLowerCase())),
   assetDetail: async (id) => {
+    if (id === 49999)
+      return {
+        id,
+        name: 'tgiann-server-pack',
+        state: 'active',
+        versions: [
+          { id: 2, version: '2.0.0', state: 'active', created_at: days(3), changelog: 'Encrypted from [our-need-cfx]', is_release_candidate: false },
+          { id: 1, version: '1.0.0', state: 'active', created_at: days(200), changelog: '', is_release_candidate: false }
+        ]
+      }
     const asset = assets.find((a) => a.id === id)!
     return { id, name: asset.name, state: 'active', versions: versionsFor(asset.name) }
   },
@@ -270,6 +323,95 @@ export const demoApi: Api = {
   onPushProgress: (cb) => {
     listeners.add(cb)
     return () => listeners.delete(cb)
+  },
+  downloadVersion: async (_, versionId) => {
+    for (const progress of [0.2, 0.5, 0.8]) {
+      emitDownload({ key: `version:${versionId}`, status: 'running', progress })
+      await wait(250)
+    }
+    emitDownload({ key: `version:${versionId}`, status: 'done' })
+    return 'D:\\FiveM\\downloads\\tgiann-phone-1.4.0.zip'
+  },
+  showDownloaded: async () => undefined,
+  listDownloadables: async (entity) =>
+    entity === 'asset-grants'
+      ? granted
+      : scripts.map(([name, version], i) => ({ key: `assets:${assetFor(name).id}`, entity: 'assets', entityId: assetFor(name).id, name, author: null, version, updatedAt: days(i * 7 + 1), receivedAt: null, updated: false, unavailable: null })),
+  grantVersions: async (keys) => {
+    await new Promise((r) => setTimeout(r, 300))
+    return Object.fromEntries(keys.map((k) => [k, granted.find((g) => g.key === k)?.unavailable ? null : `${1 + (Number(k.slice(-1)) % 4)}.${Number(k.slice(-1)) % 3}.0`]))
+  },
+  pickDownloadDir: async () => config,
+  setDownloadExtract: async (on) => {
+    config.downloadExtract = on
+    return { ...config }
+  },
+  openDownloadDir: async () => '',
+  startDownloads: async (keys) => {
+    cancelDownloadDemo = false
+    let done = 0
+    for (const key of keys) {
+      if (cancelDownloadDemo) break
+      for (const progress of [0.15, 0.45, 0.8]) {
+        emitDownload({ key, status: 'running', progress })
+        await wait(120)
+      }
+      emitDownload({ key, status: 'done', message: config.downloadExtract ? 'Unpacked' : 'Saved', version: '1.2.0' })
+      done++
+    }
+    return { done, failed: 0 }
+  },
+  cancelDownloads: async () => {
+    cancelDownloadDemo = true
+  },
+  onDownloadProgress: (cb) => {
+    downloadListeners.add(cb)
+    return () => downloadListeners.delete(cb)
+  },
+  addEncryptJob: async () => {
+    config.encryptJobs = [...config.encryptJobs, { id: `demo-${Date.now()}`, source: '', target: '', assetId: null, assetName: null, lastRun: null }]
+    return { ...config }
+  },
+  removeEncryptJob: async (id) => {
+    config.encryptJobs = config.encryptJobs.filter((j) => j.id !== id)
+    return { ...config }
+  },
+  pickEncryptFolder: async () => config,
+  updateEncryptJob: async (id, patch) => {
+    config.encryptJobs = config.encryptJobs.map((j) => (j.id === id ? { ...j, ...patch } : j))
+    return { ...config }
+  },
+  openEncryptFolder: async () => '',
+  runEncryptJob: async (jobId) => {
+    cancelEncryptDemo = false
+    const emit = (step: EncryptStepId, status: EncryptProgress['status'], message?: string, progress?: number) => encryptListeners.forEach((cb) => cb({ jobId, step, status, message, progress }))
+    const steps: [EncryptStepId, string][] = [
+      ['scan', 'No keys or webhooks in 2,814 files'],
+      ['zip', '2,814 files, 212.4 MB'],
+      ['versions', 'Deleted 2.0.0 to upload it again'],
+      ['upload', '212.4 MB'],
+      ['process', 'Active on portal'],
+      ['download', '198.7 MB'],
+      ['extract', '2,790 files in D:\\FiveM\\resources\\[our-cfx]']
+    ]
+    for (const [step, message] of steps) {
+      emit(step, 'running')
+      await wait(300)
+      if (cancelEncryptDemo) {
+        emit(step, 'error', 'Cancelled.')
+        throw new Error('Cancelled.')
+      }
+      emit(step, 'done', message, step === 'upload' || step === 'download' ? 1 : undefined)
+    }
+    config.encryptJobs = config.encryptJobs.map((j) => (j.id === jobId ? { ...j, lastRun: { at: new Date().toISOString(), ok: true, message: '[our-need-cfx] is encrypted into [our-cfx] as 2.0.0.', version: '2.0.0' } } : j))
+    return { ...config }
+  },
+  cancelEncryptJob: async () => {
+    cancelEncryptDemo = true
+  },
+  onEncryptProgress: (cb) => {
+    encryptListeners.add(cb)
+    return () => encryptListeners.delete(cb)
   },
   onOpenScript: () => () => undefined
 }

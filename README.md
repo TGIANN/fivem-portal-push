@@ -4,7 +4,8 @@
 
 <p align="center">
   A Windows desktop app that turns "update the script on the Cfx.re Portal" into one button.<br>
-  It bumps the version in <code>fxmanifest.lua</code>, zips the resource, uploads it as a new portal version, posts the update notes to your site or Discord, and can commit and push the folder to GitHub.
+  It bumps the version in <code>fxmanifest.lua</code>, zips the resource, uploads it as a new portal version, posts the update notes to your site or Discord, and can commit and push the folder to GitHub.<br>
+  It also downloads portal versions, many assets at once, and runs a whole server folder through the portal's encryption into another folder.
 </p>
 
 > [!NOTE]
@@ -22,6 +23,8 @@
 Shipping an update to a paid FiveM resource used to look like this: open `fxmanifest.lua` and guess the next version, check what is already on the portal, zip the folder by hand (without `.git`, `node_modules` and the files you forgot about), delete an old version because the portal only keeps five, upload, write a changelog from memory, then remember to commit. FiveM Portal Push does all of that from one screen.
 
 ## Features
+
+The bar on the left has three pages: **Push** uploads one script at a time, **Escrow** runs a whole server folder through Asset Escrow, and **Download** gets many assets from your account at once.
 
 - **Every script in one list.** Point it at your `resources` folders; every folder with an `fxmanifest.lua` shows up, with scripts that have uncommitted changes on top. Search, filter and sort by name, version or last push.
 - **Knows what is live.** Shows the versions already on the portal next to the one in `fxmanifest.lua` and suggests the next version, so you never upload the same number twice.
@@ -42,6 +45,9 @@ Shipping an update to a paid FiveM resource used to look like this: open `fxmani
 - **More than one folder in a zip.** Add other resources (a shared library, a bridge) or loose files like install notes to the same upload. They sit next to the script folder at the zip root.
 - **Remembers the portal asset.** Pick the matching portal asset once (exact name matches are linked automatically) and it is selected for you next time.
 - **Update post.** After the upload is live, post the update notes, changed files, package name, a role tag and images to your own site and/or Discord (webhook or bot). The package and role are saved for each script.
+- **Download any version.** Every active version of the linked asset has a download button, and **Download latest** saves the newest one. You get the encrypted zip the portal serves.
+- **Download many assets at once.** The **Download** page lists the assets granted to you and the ones you created. Tick as many as you like, or **Select updated** for the ones that changed since your last download, and they download one after another into one folder. Turn on **Unzip into folders** to get folders instead of zips. See [Download assets](#download-assets).
+- **Escrow a whole server folder.** The **Escrow** page zips a folder of open scripts (for example `[our-need-cfx]`), uploads it to one portal asset, picks the version number itself, waits until the portal has encrypted it, downloads the result and replaces another folder (for example `[our-cfx]`) with it. One click instead of zipping, deleting the old version, uploading, downloading and unpacking by hand. See [Server escrow](#server-escrow).
 - **Updates itself.** The installed app finds new releases on GitHub, shows the notes and installs them. The portable exe links to the download page.
 - **Optional GitHub step.** Commits only that resource folder as `<name> <version>` and pushes the current branch.
 - **Log in with the browser you already use.** No passwords and no copied cookies (see below).
@@ -68,6 +74,14 @@ Shipping an update to a paid FiveM resource used to look like this: open `fxmani
     <td align="center"><sub>Post the update to your site and Discord with the push</sub></td>
     <td align="center"><sub>Defaults and connections in Settings</sub></td>
   </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshot-downloads.png" alt="Download assets page with granted assets, some of them unpacked"></td>
+    <td width="50%"><img src="docs/screenshot-encrypt.png" alt="Server escrow page with a finished run"></td>
+  </tr>
+  <tr>
+    <td align="center"><sub>Download many assets from your account at once</sub></td>
+    <td align="center"><sub>Encrypt a folder of scripts into another folder</sub></td>
+  </tr>
 </table>
 
 <sub>Screenshots use demo data. Regenerate them with <code>npm run screenshots</code>.</sub>
@@ -78,14 +92,14 @@ Shipping an update to a paid FiveM resource used to look like this: open `fxmani
   <img src="docs/flow.svg" alt="Push pipeline: pick a script, bump version, zip, free a slot, upload, update post, GitHub" width="100%">
 </p>
 
-1. **Pick a script** from the sidebar. The linked portal asset and its current versions load on the right.
+1. **Pick a script** from the script list on the **Push** page. The linked portal asset and its current versions load on the right.
 2. **Choose the version.** Patch, minor, major and beta buttons are calculated from the higher of the local and the portal version, or type your own.
 3. **Check the changelog**, the zip contents, the update post and the GitHub switch, then press **Push**.
 4. The app writes the version into `fxmanifest.lua`, zips the folder (the zip root is the resource name, as the portal expects, plus any extra content), frees a version slot if needed, uploads the zip in 2 MB chunks and waits until the portal marks the version as active.
 5. If an update post target is on, it sends the update notes to your API and/or Discord.
 6. If the GitHub switch is on, it commits only that folder and pushes.
 
-The gear button in the sidebar opens **Settings**: which switches start on for every script, and the connections for the update API, Discord and Tebex.
+The gear button at the bottom of the left bar opens **Settings**: app updates, the build folders for the changelog, which switches start on for every script, and the connections for the update API, Discord and Tebex.
 
 The changelog is stored as the changelog of that portal version. The asset description is not touched.
 
@@ -109,7 +123,7 @@ Your browser's cookies are never read or copied, and your browser stays logged i
 1. Download the latest **`FiveM-Portal-Push-Setup-x.y.z.exe`** (installer) or **`FiveM-Portal-Push-x.y.z-portable.exe`** from [Releases](../../releases).
 2. Download **`FiveM-Portal-Push-Connector-x.y.z.zip`** from the same release and extract it.
 3. Open `chrome://extensions` (or `edge://extensions`), turn on **Developer mode**, click **Load unpacked** and pick the extracted folder. The installed app also ships the extension; `...` → **Open browser extension folder** shows where.
-4. Start the app, click **Log in with browser**, then add your script folder with the folder button in the sidebar.
+4. Start the app, click **Log in with browser**, then add your script folder with the folder button above the script list.
 
 The app opens the login page in your **default** browser, so install the extension there. Chromium browsers (Chrome, Edge, Brave, Opera) are supported.
 
@@ -166,11 +180,44 @@ A failed post does not undo the upload. The progress list shows the error and a 
 
 Any site can take the updates: it needs three small endpoints (a connection test, create an update, add an image) behind a Bearer key. The requests, every field, the answers the app expects and example servers are in **[docs/update-api.md](docs/update-api.md)**.
 
+## Download assets
+
+The **Download** page in the left bar has two lists: **Granted to me** (assets you bought or were given) and **Created by me** (your own uploads). Pick the folder they go to once, tick the assets and press **Download**.
+
+- Each row shows the version a download fetches, when the asset was last updated and, for granted assets, when you received it. Sort by last updated, date received or name. The portal leaves version numbers out of the granted list, so they fill in a moment after the list opens.
+
+- Each asset downloads its newest active version, the same one the portal website gives you: the newest non-beta, or the newest beta when there is nothing else. Assets that are disabled or have no active version can not be ticked.
+- Granted assets that changed since your last download carry an **Updated** tag, and **Select updated** ticks all of them.
+- Downloads run one after another. Each one is saved as `<asset name>-<version>.zip`; a zip with the same name is replaced, and two assets with the same name in one batch get a ` (2)` suffix. A cancelled or failed download leaves no half file behind.
+- With **Unzip into folders** on, every zip is unpacked into the download folder and then deleted. A folder with the same name is replaced, everything else in the folder stays.
+
+## Server escrow
+
+Some servers keep their own scripts open in one folder and run copies encrypted with Cfx.re Asset Escrow from another. The **Escrow** page does that round trip in one click. Add a folder pair and set:
+
+- **Open scripts:** the folder with the open scripts, for example `resources/[our-need-cfx]`. Subfolders such as `[category]` folders are kept.
+- **Encrypted scripts go to:** the folder the server runs, for example `resources/[our-cfx]`.
+- **Asset:** a portal asset that only holds this folder, with one placeholder version such as `1.0.0`.
+
+The version number is picked for you, and the card shows it before you run. A version an earlier run uploaded (its changelog starts with `Encrypted from`) is replaced under the same number. Any other version is never touched: the first run adds the next major number beside them, for example `2.0.0` next to `1.0.0`.
+
+Pressing **Encrypt**:
+
+1. Checks the files for keys and webhooks. Findings are listed but do not stop the run, since the upload only goes to your own asset.
+2. Zips the folder with the same zip rules as a script push: the defaults, the rules for all scripts and a `.portalignore` in the source folder. The zip holds the folder itself, as when you zip it by hand, and `node_modules` and the other skipped files never reach the portal.
+3. Deletes the version the last run uploaded. If there is none and the asset already has five versions, the run stops instead of deleting one.
+4. Uploads the zip under that number and waits (up to 45 minutes) until the portal has encrypted it.
+5. Downloads the encrypted zip and unpacks it next to the target folder (the folder around the scripts is dropped), then swaps it in. **Everything in the target folder is replaced**, so a script removed from the source disappears from the target too. If the download or the zip is broken, the target is left as it was. If a running server keeps the target locked, the error says where the unpacked scripts are.
+
+Several folder pairs can be saved, for example one per server. The target can not be the source, sit inside it or hold it, and it can not be a whole drive, your user folder, Desktop, Documents or Downloads. A run can be cancelled until the target folder is being replaced. Cancelled during the upload, the unfinished upload is removed from the portal; cancelled later, the new version stays on the portal and the target is left as it was.
+
+Files the zip rules always skip (`server.cfg`, `.env*`, `*.key`, `*.pem` and the others listed under [Zip rules](#zip-rules)) do not reach the target folder either.
+
 ## Your data
 
 | What | Where |
 | --- | --- |
-| Settings, asset links, rules for all scripts, Tebex package links | `%APPDATA%/fivem-portal-push/config.json` |
+| Settings, asset links, rules for all scripts, Tebex package links, folder pairs, the download folder | `%APPDATA%/fivem-portal-push/config.json` |
 | API key, Discord bot token and webhook URL, encrypted with Windows DPAPI | `%APPDATA%/fivem-portal-push/secrets.json` |
 | Push history | `%APPDATA%/fivem-portal-push/history.json` |
 | Log file | `%APPDATA%/fivem-portal-push/logs/portal-push.log` |
@@ -201,7 +248,7 @@ Changes in `src/main` or `src/preload` need a restart of `npm run dev`.
 
 ```
 src/
-  main/        Electron main process: portal API, login, zip, git, push pipeline
+  main/        Electron main process: portal API, login, zip, git, push pipeline, downloads, folder encryption
   preload/     the window.api bridge
   renderer/    React UI (Tailwind v4, Radix, motion)
   shared/      types and version helpers used by both sides
@@ -210,9 +257,9 @@ build/         app icon sources
 docs/          README images
 ```
 
-Portal endpoints used (`https://portal-api.cfx.re/v1/`): `auth/discourse`, `me/assets`, `assets/{id}`, `assets/{id}/re-upload`, `assets/{id}/versions/{vid}/upload-chunk`, `assets/{id}/versions/{vid}/complete-upload` and `DELETE assets/{id}/versions/{vid}`.
+Portal endpoints used (`https://portal-api.cfx.re/v1/`): `auth/discourse`, `me/assets`, `me/asset-grants`, `assets/{id}`, `assets/{id}/re-upload`, `assets/{id}/versions/{vid}/upload-chunk`, `assets/{id}/versions/{vid}/complete-upload`, `DELETE assets/{id}/versions/{vid}`, and `assets/{id}/versions/{vid}/packs/{pid}/download` / `asset-grants/{gid}/versions/{vid}/packs/{pid}/download`, which answer with a short-lived link to the zip.
 
-Stack: Electron, electron-vite, React 19, TypeScript, Tailwind CSS v4, Radix UI, Font Awesome, yazl.
+Stack: Electron, electron-vite, React 19, TypeScript, Tailwind CSS v4, Radix UI, Font Awesome, yazl, yauzl.
 
 ## Releasing
 

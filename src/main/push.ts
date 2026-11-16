@@ -1,4 +1,4 @@
-import { open, rm } from 'fs/promises'
+import { rm } from 'fs/promises'
 import { basename } from 'path'
 import type { PushProgress, PushRequest, PushStepId } from '../shared/types'
 import { isBetaVersion } from '../shared/version'
@@ -6,12 +6,11 @@ import { runChecks } from './checks'
 import { commitAndPush, gitRoot, headCommit } from './git'
 import { addHistory } from './history'
 import { readManifestVersion, writeManifestVersion } from './manifest'
-import { assetDetail, completeUpload, deleteVersion, startUpload, uploadChunk } from './portal'
+import { assetDetail, deleteVersion } from './portal'
 import { updateConfig } from './store'
 import { postUpdate } from './updates'
+import { uploadZip, waitUntilActive } from './upload'
 import { zipResource } from './zip'
-
-const chunkSize = 2 * 1024 * 1024
 
 class UpdatePostError extends Error {}
 class PushCancelled extends Error {}
@@ -84,41 +83,21 @@ export async function push(req: PushRequest, emit: (p: PushProgress) => void, ca
     stopIfCancelled()
     step('upload', 'running', undefined, 0)
     const beta = isBetaVersion(req.version)
-    const upload = await startUpload(
+    const upload = await uploadZip(
       req.assetId,
-      { name: `${name}.zip`, size: zip.size, chunkSize },
-      { version: req.version, changelog: req.changelog.trim() || `Version ${req.version}`, beta }
-    )
-    partialUpload = upload.versionId
-    const total = Math.ceil(zip.size / chunkSize)
-    const file = await open(zip.path, 'r')
-    try {
-      for (let i = 0; i < total; i++) {
-        stopIfCancelled()
-        const buf = Buffer.alloc(Math.min(chunkSize, zip.size - i * chunkSize))
-        await file.read(buf, 0, buf.length, i * chunkSize)
-        await uploadChunk(upload.assetId, upload.versionId, i, buf)
-        step('upload', 'running', `Chunk ${i + 1}/${total}`, (i + 1) / total)
+      { path: zip.path, size: zip.size, name: `${name}.zip` },
+      { version: req.version, changelog: req.changelog.trim() || `Version ${req.version}`, beta },
+      {
+        started: (id) => (partialUpload = id),
+        progress: (done, total) => step('upload', 'running', `Chunk ${done}/${total}`, done / total),
+        stop: stopIfCancelled
       }
-    } finally {
-      await file.close()
-    }
-    stopIfCancelled()
-    await completeUpload(upload.assetId, upload.versionId)
+    )
     partialUpload = null
     step('upload', 'done', beta ? 'Uploaded as release candidate' : 'Uploaded', 1)
 
     step('process', 'running', 'Waiting for portal')
-    const start = Date.now()
-    for (;;) {
-      const v = (await assetDetail(req.assetId)).versions.find((x) => x.id === upload.versionId)
-      const state = v?.state ?? 'unknown'
-      if (state === 'active') break
-      if (/fail|error|reject|invalid/i.test(state)) throw new Error(`Portal processing failed (state: ${state})`)
-      if (Date.now() - start > processTimeout) throw new Error(`Portal is still processing (state: ${state}). Check the portal later.`)
-      step('process', 'running', `State: ${state}`)
-      await new Promise((r) => setTimeout(r, 2000))
-    }
+    await waitUntilActive(req.assetId, upload.versionId, processTimeout, (state) => step('process', 'running', `State: ${state}`))
     step('process', 'done', 'Active on portal')
     live = true
 

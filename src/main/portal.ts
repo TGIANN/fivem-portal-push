@@ -1,5 +1,9 @@
 import { app, BrowserWindow, session } from 'electron'
-import type { PortalAsset, PortalAssetDetail } from '../shared/types'
+import { createWriteStream } from 'fs'
+import { rename, rm } from 'fs/promises'
+import { Readable, Transform } from 'stream'
+import { pipeline } from 'stream/promises'
+import type { DownloadEntity, PortalAsset, PortalAssetDetail, PortalVersion } from '../shared/types'
 import { log } from './log'
 
 const API = 'https://portal-api.cfx.re/v1/'
@@ -200,6 +204,80 @@ export async function listAssets(search: string): Promise<PortalAsset[]> {
 
 export function assetDetail(id: number): Promise<PortalAssetDetail> {
   return request<PortalAssetDetail>('GET', `assets/${id}`)
+}
+
+export interface CreatedAsset {
+  id: number
+  name: string
+  updated_at?: string
+  is_disabled?: boolean
+  versions?: PortalVersion[]
+}
+
+/** In the list, versions carry only id, state and packs; the single grant has the full versions. */
+export interface GrantedAsset {
+  grant_id: number
+  updated_since_last_download?: boolean
+  received_at?: string
+  updated_at?: string
+  asset: { name: string; author?: string; is_disabled?: boolean; versions?: PortalVersion[] }
+}
+
+export const grantDetail = (id: number): Promise<GrantedAsset> => request<GrantedAsset>('GET', `asset-grants/${id}`)
+
+/** Both lists come in pages; the portal website asks for one page at a time. */
+async function allPages<T>(path: string, key: 'items' | 'grants'): Promise<T[]> {
+  const out: T[] = []
+  for (let page = 1; ; page++) {
+    const data = await request<Record<string, unknown>>('GET', `${path}?page=${page}&search=&sort=asset.name&direction=asc`)
+    out.push(...((data[key] as T[] | undefined) ?? []))
+    const pages = typeof data.page_count === 'number' ? data.page_count : 1
+    if (page >= pages || page >= 100) return out
+  }
+}
+
+export const listCreatedAssets = (): Promise<CreatedAsset[]> => allPages<CreatedAsset>('me/assets', 'items')
+export const listGrantedAssets = (): Promise<GrantedAsset[]> => allPages<GrantedAsset>('me/asset-grants', 'grants')
+
+/** A short-lived link to the encrypted zip of one pack. */
+export async function packDownloadUrl(entity: DownloadEntity, entityId: number, versionId: number, packId: number): Promise<string> {
+  const res = await request<{ url?: unknown }>('GET', `${entity}/${entityId}/versions/${versionId}/packs/${packId}/download`)
+  if (typeof res.url !== 'string' || !res.url.startsWith('https://')) throw new Error('The portal did not return a download link')
+  return res.url
+}
+
+/** Streams a download link to disk. The file appears under its name only when it is complete. */
+export async function fetchToFile(url: string, file: string, onProgress: (received: number, total: number) => void, cancelled: () => boolean): Promise<number> {
+  const abort = new AbortController()
+  const res = await cfxSession().fetch(url, { signal: abort.signal })
+  if (!res.ok || !res.body) throw new Error(`Download failed (HTTP ${res.status})`)
+  const total = Number(res.headers.get('content-length')) || 0
+  const part = `${file}.part`
+  let received = 0
+  let last = 0
+  const counter = new Transform({
+    transform(chunk: Buffer, _, done) {
+      if (cancelled()) {
+        abort.abort()
+        return done(new Error('Download cancelled.'))
+      }
+      received += chunk.length
+      if (Date.now() - last > 200) {
+        last = Date.now()
+        onProgress(received, total)
+      }
+      done(null, chunk)
+    }
+  })
+  try {
+    await pipeline(Readable.fromWeb(res.body as import('stream/web').ReadableStream), counter, createWriteStream(part))
+    await rename(part, file)
+  } catch (e) {
+    await rm(part, { force: true })
+    throw e
+  }
+  onProgress(received, total)
+  return received
 }
 
 export function deleteVersion(id: number, versionId: number): Promise<unknown> {

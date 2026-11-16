@@ -197,9 +197,11 @@ interface SettingsProps {
   onConfig: (cfg: AppConfig) => void
   appUpdate: AppUpdateState | null
   onShowUpdate: () => void
+  /** The button that opens Settings; a small gear when left out. */
+  trigger?: ReactNode
 }
 
-export default function SettingsButton({ config, onConfig, appUpdate, onShowUpdate }: SettingsProps) {
+export default function SettingsButton({ config, onConfig, appUpdate, onShowUpdate, trigger }: SettingsProps) {
   const [error, setError] = useState<string | null>(null)
   const update = config?.update
   const secrets = config?.secrets
@@ -219,11 +221,15 @@ export default function SettingsButton({ config, onConfig, appUpdate, onShowUpda
 
   return (
     <Dialog.Root onOpenChange={() => setError(null)}>
-      <Tooltip content="Settings">
-        <Dialog.Trigger asChild>
-          <Button variant="plain" size="icon" icon={faGear} aria-label="Settings" />
-        </Dialog.Trigger>
-      </Tooltip>
+      {trigger ? (
+        <Dialog.Trigger asChild>{trigger}</Dialog.Trigger>
+      ) : (
+        <Tooltip content="Settings">
+          <Dialog.Trigger asChild>
+            <Button variant="plain" size="icon" icon={faGear} aria-label="Settings" />
+          </Dialog.Trigger>
+        </Tooltip>
+      )}
       <Dialog.Portal>
         <Dialog.Overlay className="fixed inset-0 z-40 bg-black/60" />
         <Dialog.Content

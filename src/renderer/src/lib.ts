@@ -29,6 +29,12 @@ export function timeAgo(iso: string): string {
   return `${Math.floor(s / 86400)}d ago`
 }
 
+/** "3d ago" for the last month, a short date before that. */
+export function shortDate(iso: string): string {
+  if (Date.now() - Date.parse(iso) < 30 * 86400000) return timeAgo(iso)
+  return new Date(iso).toLocaleDateString('en-US', { day: 'numeric', month: 'short', year: 'numeric' })
+}
+
 export function formatBytes(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`

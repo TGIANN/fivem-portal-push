@@ -84,7 +84,7 @@ function scanText(text: string, { name: file, own }: ScanFile, skipMaybe: boolea
   }
 }
 
-interface ScanFile {
+export interface ScanFile {
   abs: string
   /** The path inside the zip, or inside the script for the script's own files. */
   name: string
@@ -135,13 +135,6 @@ function checkManifest(dir: string, zipped: string[]): ManifestIssue[] {
 // ---------- Together ----------
 
 export async function runChecks(dir: string): Promise<ScriptChecks> {
-  const script = basename(dir)
-  const config = getConfig()
-  const allowed = new Set(config.secretAllow[script] ?? [])
-  // Generated bundles are full of names like "token" that mean nothing.
-  const buildPrefixes = config.buildDirs.map((d) => `${d.toLowerCase()}/`)
-  const isBuild = (rel: string): boolean => buildPrefixes.some((p) => rel.toLowerCase().startsWith(p)) || /\.min\.\w+$/i.test(rel)
-
   const own = await includedFiles(dir)
   const files: ScanFile[] = own.map((f) => ({ abs: f.abs, name: f.rel, own: true }))
   for (const item of await resolveBundle(dir)) {
@@ -149,6 +142,15 @@ export async function runChecks(dir: string): Promise<ScriptChecks> {
     if (item.dir) files.push(...(await includedFiles(item.path)).map((f) => ({ abs: f.abs, name: `${item.name}/${f.rel}`, own: false })))
     else files.push({ abs: item.path, name: item.name, own: false })
   }
+
+  const { secrets, scanned } = await scanSecrets(files, new Set(getConfig().secretAllow[basename(dir)] ?? []))
+  return { secrets, manifest: checkManifest(dir, own.map((f) => f.rel)), scanned }
+}
+
+export async function scanSecrets(files: ScanFile[], allowed: Set<string>): Promise<{ secrets: SecretFinding[]; scanned: number }> {
+  // Generated bundles are full of names like "token" that mean nothing.
+  const buildPrefixes = getConfig().buildDirs.map((d) => `${d.toLowerCase()}/`)
+  const isBuild = (rel: string): boolean => buildPrefixes.some((p) => rel.toLowerCase().startsWith(p)) || /\.min\.\w+$/i.test(rel)
 
   const texts = files.filter((f) => textFiles.has(extname(f.name).toLowerCase()) || basename(f.name).toLowerCase() === 'fxmanifest.lua')
   const sink = new Map<string, SecretFinding>()
@@ -162,5 +164,5 @@ export async function runChecks(dir: string): Promise<ScriptChecks> {
   }
 
   const secrets = [...sink.values()].sort((a, b) => Number(b.sure) - Number(a.sure) || a.file.localeCompare(b.file) || a.line - b.line)
-  return { secrets, manifest: checkManifest(dir, own.map((f) => f.rel)), scanned: texts.length }
+  return { secrets, scanned: texts.length }
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import type { AppConfig, AppUpdateState, AssetMapping, AuthState, ChangedFile, PortalAssetDetail, ScriptChecks, ScriptInfo, ZipTree } from '../../shared/types'
+import type { AppConfig, AppUpdateState, AssetMapping, AuthState, ChangedFile, DownloadProgress, PortalAssetDetail, ScriptChecks, ScriptInfo, ZipTree } from '../../shared/types'
 import { errorMessage, normalizeName } from './lib'
 
 export function useAssetLink(script: ScriptInfo, config: AppConfig, auth: AuthState, onAuthError: (e: unknown) => void) {
@@ -80,6 +80,13 @@ const groups: { status: ChangedFile['status'][]; label: string }[] = [
   { status: ['added'], label: '+new:' },
   { status: ['deleted'], label: '-deleted:' }
 ]
+
+/** The last progress of every download, by key. */
+export function useDownloadProgress() {
+  const [progress, setProgress] = useState<Record<string, DownloadProgress>>({})
+  useEffect(() => window.api.onDownloadProgress((p) => setProgress((s) => ({ ...s, [p.key]: p }))), [])
+  return { progress, reset: useCallback(() => setProgress({}), []) }
+}
 
 export function useAppUpdate() {
   const [state, setState] = useState<AppUpdateState | null>(null)

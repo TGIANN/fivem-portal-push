@@ -58,4 +58,19 @@ export async function takeScreenshots(win: BrowserWindow): Promise<void> {
 
   await click('[aria-label="Settings"]')
   await shot('screenshot-settings.png')
+
+  win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'Escape' })
+  await wait(500)
+  await click('nav button', 'Download')
+  await win.webContents.executeJavaScript('document.activeElement?.blur()')
+  await wait(800)
+  await click('button', 'Select updated')
+  await click('main aside button', 'Download')
+  await wait(2000)
+  await shot('screenshot-downloads.png')
+
+  await click('nav button', 'Escrow')
+  await click('main section button', 'Encrypt')
+  await wait(2800)
+  await shot('screenshot-encrypt.png')
 }

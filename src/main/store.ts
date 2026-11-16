@@ -19,6 +19,9 @@ const defaults: AppConfig = {
   secretAllow: {},
   buildDirs: defaultBuildDirs,
   update: { apiDefault: false, discordDefault: false, apiUrl: '', tebexToken: '', discordMode: 'webhook', discordChannel: '', roleId: null, allowHere: false, allowEveryone: false, apiAnnounces: false },
+  encryptJobs: [],
+  downloadDir: null,
+  downloadExtract: false,
   secrets: { apiKey: false, botToken: false, webhookUrl: false }
 }
 

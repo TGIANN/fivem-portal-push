@@ -5,7 +5,7 @@ import type { PushProgress, PushStepId, PushStepStatus } from '../../../shared/t
 import { cn } from '@/lib'
 import { Row } from './ui/group'
 
-const steps: { id: PushStepId; label: string }[] = [
+const pushSteps: { id: PushStepId; label: string }[] = [
   { id: 'manifest', label: 'Update fxmanifest version' },
   { id: 'zip', label: 'Zip resource' },
   { id: 'versions', label: 'Free a version slot' },
@@ -17,7 +17,9 @@ const steps: { id: PushStepId; label: string }[] = [
 
 const icons: Partial<Record<PushStepStatus, typeof faCheck>> = { done: faCheck, error: faXmark, running: faCircleNotch, skipped: faMinus }
 
-export default function PushSteps({ state }: { state: Partial<Record<PushStepId, PushProgress>> }) {
+type StepState = Pick<PushProgress, 'status' | 'message' | 'progress'>
+
+export default function PushSteps<T extends string = PushStepId>({ state, steps = pushSteps as { id: T; label: string }[] }: { state: Partial<Record<T, StepState>>; steps?: { id: T; label: string }[] }) {
   return steps.map(({ id, label }) => {
     const s = state[id]
     const status = s?.status ?? 'pending'
@@ -51,7 +53,7 @@ export default function PushSteps({ state }: { state: Partial<Record<PushStepId,
         <div className="min-w-0 flex-1">
           <div className={status === 'pending' || status === 'skipped' ? 'text-label-2' : 'text-label'}>{label}</div>
           {s?.message && <div className={cn('text-footnote break-words selectable', status === 'error' ? 'text-red' : 'text-label-2')}>{s.message}</div>}
-          {id === 'upload' && status === 'running' && s?.progress !== undefined && (
+          {status === 'running' && s?.progress !== undefined && (
             <div className="mt-2 h-1 overflow-hidden rounded-full bg-fill" role="progressbar" aria-valuenow={Math.round(s.progress * 100)}>
               <div className="h-full origin-left bg-accent transition-transform duration-300" style={{ transform: `scaleX(${s.progress})` }} />
             </div>

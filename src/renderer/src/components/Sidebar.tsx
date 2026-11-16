@@ -1,14 +1,12 @@
-import { faCircleArrowUp, faCircleXmark, faMagnifyingGlass, faRotate } from '@fortawesome/free-solid-svg-icons'
+import { faCircleXmark, faMagnifyingGlass, faRotate } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useVirtualizer } from '@tanstack/react-virtual'
 import { useMemo, useRef, useState } from 'react'
 import useLocalStorageState from 'use-local-storage-state'
-import type { AppConfig, AppUpdateState, ScriptInfo } from '../../../shared/types'
+import type { AppConfig, ScriptInfo } from '../../../shared/types'
 import { compareVersions } from '../../../shared/version'
 import { cn } from '@/lib'
 import FoldersButton from './FoldersButton'
-import Logo from './Logo'
-import SettingsButton from './SettingsButton'
 import SortButton, { type SortKey } from './SortButton'
 import { Button } from './ui/button'
 import { Segmented } from './ui/segmented'
@@ -23,14 +21,11 @@ interface Props {
   onRescan: () => void
   onAddRoot: () => void
   onConfig: (cfg: AppConfig) => void
-  onSettings: (cfg: AppConfig) => void
-  appUpdate: AppUpdateState | null
-  onShowUpdate: () => void
 }
 
 type Filter = 'all' | 'changed' | 'linked'
 
-export default function Sidebar({ config, scripts, scanning, selected, onSelect, onRescan, onAddRoot, onConfig, onSettings, appUpdate, onShowUpdate }: Props) {
+export default function Sidebar({ config, scripts, scanning, selected, onSelect, onRescan, onAddRoot, onConfig }: Props) {
   const [query, setQuery] = useState('')
   const [filter, setFilter] = useState<Filter>('all')
   const [sort, setSort] = useLocalStorageState<SortKey>('sidebar-sort', { defaultValue: 'name' })
@@ -69,18 +64,13 @@ export default function Sidebar({ config, scripts, scanning, selected, onSelect,
   return (
     <aside className="flex w-[300px] shrink-0 flex-col border-r border-separator/60 bg-group">
       <div className="flex h-[52px] shrink-0 items-center justify-between gap-2 pr-2 pl-4">
-        <span className="flex min-w-0 items-center gap-2">
-          <Logo size={22} />
-          <span className="truncate text-body font-semibold">FiveM Portal Push</span>
-        </span>
+        <span className="truncate text-body font-semibold">Scripts</span>
         <div className="flex shrink-0 items-center [&>button]:size-7">
           <Tooltip content="Rescan folders">
             <Button variant="plain" size="icon" icon={faRotate} aria-label="Rescan folders" onClick={onRescan} className={scanning ? '[&_svg]:animate-spin' : ''} />
           </Tooltip>
           <SortButton sort={sort} changedFirst={changedFirst} onSort={setSort} onChangedFirst={setChangedFirst} />
-          <FoldersButton roots={config?.roots ?? []} onAdd={onAddRoot} onConfig={onConfig} />
-          <SettingsButton config={config} onConfig={onSettings} appUpdate={appUpdate} onShowUpdate={onShowUpdate} />
-        </div>
+          <FoldersButton roots={config?.roots ?? []} onAdd={onAddRoot} onConfig={onConfig} />        </div>
       </div>
 
       <div className="flex flex-col gap-2.5 px-3 pb-3">
@@ -162,16 +152,6 @@ export default function Sidebar({ config, scripts, scanning, selected, onSelect,
           </div>
         )}
       </div>
-
-      {(appUpdate?.status === 'available' || appUpdate?.status === 'downloading' || appUpdate?.status === 'ready') && (
-        <button
-          onClick={onShowUpdate}
-          className="m-2 flex h-9 shrink-0 cursor-pointer items-center gap-2 rounded-lg bg-[rgba(54,255,159,0.14)] px-3 text-footnote font-medium text-accent transition-colors duration-150 hover:bg-[rgba(54,255,159,0.22)]"
-        >
-          <FontAwesomeIcon icon={faCircleArrowUp} />
-          {appUpdate.status === 'ready' ? 'Restart to update' : appUpdate.status === 'downloading' ? `Downloading ${appUpdate.percent}%` : `Update to ${appUpdate.version}`}
-        </button>
-      )}
     </aside>
   )
 }

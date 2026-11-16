@@ -12,6 +12,12 @@ export interface PortalAsset {
   name: string
 }
 
+/** One downloadable file of a version. game is "gta5", "rdr3", or "" for both. */
+export interface PortalPack {
+  id: number
+  game: string
+}
+
 export interface PortalVersion {
   id: number
   version: string
@@ -19,6 +25,66 @@ export interface PortalVersion {
   created_at: string
   changelog: string
   is_release_candidate: boolean
+  packs?: PortalPack[]
+}
+
+/** Your own assets download through "assets", the ones granted to you through "asset-grants". */
+export type DownloadEntity = 'assets' | 'asset-grants'
+
+/** An asset in the bulk download list, with the version a download would fetch. */
+export interface Downloadable {
+  /** `${entity}:${entityId}`, also what a download request sends back. */
+  key: string
+  entity: DownloadEntity
+  entityId: number
+  name: string
+  author: string | null
+  /** Granted assets list their versions without numbers; the number is known once one is downloaded. */
+  version: string | null
+  updatedAt: string | null
+  /** When the asset was granted to you. Only granted assets have it. */
+  receivedAt: string | null
+  /** Changed on the portal since your last download. Only granted assets report it. */
+  updated: boolean
+  /** Why it can not be downloaded right now, or null. */
+  unavailable: string | null
+}
+
+export interface DownloadProgress {
+  key: string
+  status: 'running' | 'done' | 'error'
+  message?: string
+  progress?: number
+  /** The version being downloaded, once known. */
+  version?: string
+}
+
+export interface EncryptRun {
+  at: string
+  ok: boolean
+  message: string
+  /** The portal version the run uploaded. */
+  version?: string
+}
+
+/** A folder of scripts sent through the portal for encryption, then unpacked into another folder. */
+export interface EncryptJob {
+  id: string
+  source: string
+  target: string
+  assetId: number | null
+  assetName: string | null
+  lastRun: EncryptRun | null
+}
+
+export type EncryptStepId = 'scan' | 'zip' | 'versions' | 'upload' | 'process' | 'download' | 'extract'
+
+export interface EncryptProgress {
+  jobId: string
+  step: EncryptStepId
+  status: PushStepStatus
+  message?: string
+  progress?: number
 }
 
 export interface PortalAssetDetail {
@@ -104,6 +170,11 @@ export interface AppConfig {
   /** Folders that show as one line in the changelog, relative to the script. */
   buildDirs: string[]
   update: UpdateSettings
+  encryptJobs: EncryptJob[]
+  /** Where bulk downloads go. */
+  downloadDir: string | null
+  /** Unpack bulk downloads into folders instead of keeping the zips. */
+  downloadExtract: boolean
   /** Which secrets are saved. The values never leave the main process. */
   secrets: Record<SecretName, boolean>
 }

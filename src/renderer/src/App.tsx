@@ -5,7 +5,10 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { AppConfig, AuthState, ScriptInfo } from '../../shared/types'
 import AccountButton, { type LoginMethod } from './components/AccountButton'
 import AppUpdateDialog from './components/AppUpdateDialog'
+import DownloadsPage from './components/DownloadsPage'
+import EncryptPage from './components/EncryptPage'
 import ScriptPanel from './components/ScriptPanel'
+import NavRail, { type Page } from './components/NavRail'
 import Sidebar from './components/Sidebar'
 import Toolbar from './components/Toolbar'
 import { Button } from './components/ui/button'
@@ -18,6 +21,8 @@ export default function App() {
   const [scripts, setScripts] = useState<ScriptInfo[] | null>(null)
   const [scanning, setScanning] = useState(false)
   const [selected, setSelected] = useState<string | null>(null)
+  const [page, setPage] = useState<Page>('script')
+  const [visited, setVisited] = useState<Partial<Record<Page, boolean>>>({})
   const [auth, setAuth] = useState<AuthState>('checking')
   const [authError, setAuthError] = useState<string | null>(null)
   const [waiting, setWaiting] = useState<LoginMethod | null>(null)
@@ -60,6 +65,7 @@ export default function App() {
       await reloadConfig()
       await rescan()
       setSelected(path)
+      setPage('script')
     })
   }, [reloadConfig, rescan])
 
@@ -94,28 +100,46 @@ export default function App() {
   const account = (
     <AccountButton auth={auth} waiting={waiting} error={authError} onLogin={login} onCancel={() => window.api.cancelBrowserLogin()} onLogout={logout} />
   )
+  const openPage = (p: Page) => {
+    setPage(p)
+    if (p !== 'script') setVisited((v) => ({ ...v, [p]: true }))
+  }
 
   return (
     <TooltipProvider>
       <div className="flex h-full">
-        <Sidebar
-          config={config}
-          scripts={scripts}
-          scanning={scanning}
-          selected={selected}
-          onSelect={setSelected}
-          onRescan={rescan}
-          onAddRoot={addRoot}
-          onConfig={async (cfg) => {
-            setConfig(cfg)
-            await rescan()
-          }}
-          onSettings={setConfig}
-          appUpdate={appUpdate}
-          onShowUpdate={() => setUpdateOpen(true)}
-        />
+        <NavRail page={page} onPage={openPage} config={config} onConfig={setConfig} appUpdate={appUpdate} onShowUpdate={() => setUpdateOpen(true)} />
+        {/* Every page stays mounted once opened, so a long run keeps its progress while you look at another page. */}
+        <div className={page === 'script' ? 'contents' : 'hidden'}>
+          <Sidebar
+            config={config}
+            scripts={scripts}
+            scanning={scanning}
+            selected={selected}
+            onSelect={setSelected}
+            onRescan={rescan}
+            onAddRoot={addRoot}
+            onConfig={async (cfg) => {
+              setConfig(cfg)
+              await rescan()
+            }}
+          />
+        </div>
         {appUpdate?.version && <AppUpdateDialog state={appUpdate} open={updateOpen} onOpenChange={setUpdateOpen} />}
-        <main className="flex min-w-0 flex-1 flex-col">
+        {config &&
+          (['downloads', 'encrypt'] as const).map(
+            (p) =>
+              visited[p] && (
+                <main key={p} className={page === p ? 'flex min-w-0 flex-1 flex-col' : 'hidden'}>
+                  {p === 'downloads' ? (
+                    <DownloadsPage config={config} auth={auth} account={account} waiting={waiting === 'browser'} onLogin={() => login('browser')} onAuthError={onAuthError} onConfig={setConfig} />
+                  ) : (
+                    <EncryptPage config={config} auth={auth} account={account} waiting={waiting === 'browser'} onLogin={() => login('browser')} onAuthError={onAuthError} onConfig={setConfig} />
+                  )}
+                </main>
+              )
+          )}
+        <main className={page === 'script' ? 'flex min-w-0 flex-1 flex-col' : 'hidden'}>
           {script && config ? (
             <ScriptPanel
               key={script.path}

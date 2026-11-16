@@ -33,11 +33,23 @@ export async function zipResource(dir: string): Promise<{ path: string; files: n
     }
   }
 
+  const out = await writeZip(zip, name)
+  return { path: out, files, size: statSync(out).size, extras: extras.length }
+}
+
+/** Zips files inside one folder named `name` at the zip root. */
+export async function zipFiles(files: { abs: string; rel: string }[], name: string): Promise<{ path: string; size: number }> {
+  const zip = new ZipFile()
+  for (const file of files) zip.addFile(file.abs, `${name}/${file.rel}`)
+  const out = await writeZip(zip, name)
+  return { path: out, size: statSync(out).size }
+}
+
+async function writeZip(zip: ZipFile, name: string): Promise<string> {
   const out = join(tmpdir(), `${name}-${Date.now()}.zip`)
   await new Promise<void>((resolve, reject) => {
     zip.outputStream.pipe(createWriteStream(out)).on('close', resolve).on('error', reject)
     zip.end()
   })
-
-  return { path: out, files, size: statSync(out).size, extras: extras.length }
+  return out
 }
