@@ -2,6 +2,20 @@
 
 All notable changes to FiveM Portal Push. Versions follow [semantic versioning](https://semver.org/); the newest is on top.
 
+## [1.4.0](https://github.com/TGIANN/fivem-portal-push/compare/v1.3.0...v1.4.0) (2026-11-16)
+
+
+### New Features
+
+* download versions and assets in bulk, escrow whole server folders, page-based layout ([48d9a63](https://github.com/TGIANN/fivem-portal-push/commit/48d9a63b8805a0ac402ff142f052a4b00c6cbbef))
+
+
+### Bug Fixes
+
+* harden unzip ownership, escrow version replacement and folder checks ([a58fffa](https://github.com/TGIANN/fivem-portal-push/commit/a58fffaeb68ad41737bcba03ee66137713f335a8))
+* only replace unzipped folders the same asset made, and retry portal lists on 500 ([031780f](https://github.com/TGIANN/fivem-portal-push/commit/031780f729a9649298334955185f356d38d39d98))
+* skip .claude and CLAUDE.md in every zip by default ([73ae93b](https://github.com/TGIANN/fivem-portal-push/commit/73ae93b704ff5199fcf606bf588e899efe7472ad))
+
 ## [1.3.0](https://github.com/TGIANN/fivem-portal-push/compare/v1.2.0...v1.3.0) (2026-11-09)
 
 
