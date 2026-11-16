@@ -77,24 +77,6 @@ async function fullVersions({ item, versions }: Listed): Promise<PortalVersion[]
   return versions ?? (await assetDetail(item.entityId)).versions
 }
 
-/** The version numbers of up to 25 listed grants, read three at a time so the list fills without hammering the portal. */
-export async function grantVersions(keys: string[]): Promise<Record<string, string | null>> {
-  const rows = keys
-    .slice(0, 25)
-    .map((k) => listed.get(k)?.item)
-    .filter((i): i is Downloadable => i?.entity === 'asset-grants' && !i.unavailable)
-  const out: Record<string, string | null> = {}
-  let next = 0
-  const worker = async (): Promise<void> => {
-    while (next < rows.length) {
-      const item = rows[next++]
-      out[item.key] = pickVersion(await readGrant(item))?.version ?? null
-    }
-  }
-  await Promise.all([worker(), worker(), worker()])
-  return out
-}
-
 async function downloadOne(row: Listed, dir: string, claim: (name: string) => string, extract: boolean, emit: (p: DownloadProgress) => void, cancelled: () => boolean): Promise<string> {
   const { item } = row
   if (item.unavailable) throw new Error(item.unavailable)

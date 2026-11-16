@@ -84,7 +84,6 @@ const api = {
   downloadVersion: (assetId: number, versionId: number) => call<string | null>('portal:downloadVersion', assetId, versionId),
   showDownloaded: (path: string) => call<void>('download:show', path),
   listDownloadables: (entity: DownloadEntity) => call<Downloadable[]>('downloads:list', entity),
-  grantVersions: (keys: string[]) => call<Record<string, string | null>>('downloads:versions', keys),
   pickDownloadDir: () => call<AppConfig>('downloads:pickDir'),
   setDownloadExtract: (on: boolean) => call<AppConfig>('downloads:extract', on),
   openDownloadDir: () => call<string>('downloads:open'),

@@ -155,7 +155,16 @@ async function rawRequest(method: string, path: string, body?: unknown): Promise
   return res
 }
 
+/** Cfx.re's Akamai edge answering for the portal: it refuses a session it takes for a bot, usually after many requests in a short time. */
+function edgeBlocked(res: Response, text: string): boolean {
+  return /akamai/i.test(res.headers.get('server') ?? '') || /<title>\s*Access Denied\s*<\/title>/i.test(text)
+}
+
+export const edgeBlockedMessage =
+  "Cfx.re's firewall is refusing this app's requests right now, usually after many requests in a short time. Wait a while and try again. If it keeps happening, log out and log in again."
+
 function describe(res: Response, text: string): string {
+  if (edgeBlocked(res, text)) return 'blocked by the Cfx.re firewall'
   if (res.headers.get('cf-mitigated') || /<title>Just a moment|cf-browser-verification|challenge-platform/i.test(text)) {
     return 'Cloudflare blocked the request'
   }
@@ -172,17 +181,22 @@ let reloginPromise: Promise<boolean> | null = null
 async function request<T>(method: string, path: string, body?: unknown): Promise<T> {
   if (!(await hasPortalCookies())) throw new AuthError('Log in to the Cfx.re portal first.')
   let res = await rawRequest(method, path, body)
+  let text = await res.text()
 
-  if ((res.status === 401 || res.status === 403) && (await hasForumSession())) {
+  // A firewall refusal is not a session problem, and logging in again would only add requests.
+  if ((res.status === 401 || res.status === 403) && !edgeBlocked(res, text) && (await hasForumSession())) {
     reloginPromise ??= login(null, false).finally(() => (reloginPromise = null))
-    if (await reloginPromise) res = await rawRequest(method, path, body)
+    if (await reloginPromise) {
+      res = await rawRequest(method, path, body)
+      text = await res.text()
+    }
   }
 
-  const text = await res.text()
   if (res.ok) return (text ? JSON.parse(text) : {}) as T
 
   const detail = describe(res, text)
   log('api', `${method} ${path.split('?')[0]} failed ${res.status}: ${detail} | server=${res.headers.get('server')} cf-ray=${res.headers.get('cf-ray')} type=${res.headers.get('content-type')}`)
+  if (edgeBlocked(res, text)) throw new Error(edgeBlockedMessage)
   if (res.status === 401 || res.status === 403) throw new AuthError(`The portal rejected the session (HTTP ${res.status}: ${detail}).`)
   throw new Error(`Portal ${method} ${path.split('?')[0]} failed (${res.status}): ${detail}`)
 }

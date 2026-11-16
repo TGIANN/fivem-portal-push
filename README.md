@@ -184,7 +184,7 @@ Any site can take the updates: it needs three small endpoints (a connection test
 
 The **Download** page in the left bar has two lists: **Granted to me** (assets you bought or were given) and **Created by me** (your own uploads). Pick the folder they go to once, tick the assets and press **Download**.
 
-- Each row shows the version a download fetches, when the asset was last updated and, for granted assets, when you received it. Sort by last updated, date received or name. The portal leaves version numbers out of the granted list, so they fill in a moment after the list opens.
+- Each row shows the version a download fetches, when the asset was last updated and, for granted assets, when you received it. Sort by last updated, date received or name. The portal leaves version numbers out of the granted list, so a granted asset shows its version once it is downloaded.
 
 - Each asset downloads its newest active version, the same one the portal website gives you: the newest non-beta, or the newest beta when there is nothing else. Assets that are disabled or have no active version can not be ticked.
 - Granted assets that changed since your last download carry an **Updated** tag, and **Select updated** ticks all of them.

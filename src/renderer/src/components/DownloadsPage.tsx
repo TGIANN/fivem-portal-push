@@ -48,7 +48,6 @@ export default function DownloadsPage({ config, auth, account, waiting, onLogin,
   const [running, setRunning] = useState(false)
   const [cancelling, setCancelling] = useState(false)
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null)
-  const [versions, setVersions] = useState<Record<string, string | null>>({})
   const { progress, reset } = useDownloadProgress()
   const granted = tab === 'asset-grants'
   const sortBy: Sort = !granted && sort === 'received' ? 'updated' : sort
@@ -73,27 +72,6 @@ export default function DownloadsPage({ config, auth, account, waiting, onLogin,
   useEffect(() => {
     if (auth === 'loggedIn' && !lists[tab]) load(tab)
   }, [auth, tab, lists, load])
-
-  // The grants list has no version numbers, so they are read in the background, top of the list first.
-  const grants = lists['asset-grants']
-  useEffect(() => {
-    if (!grants) return
-    let live = true
-    const order = [...grants].sort((a, b) => time(b.updatedAt) - time(a.updatedAt)).filter((g) => !g.unavailable)
-    ;(async () => {
-      for (let i = 0; i < order.length && live; i += 25) {
-        try {
-          const found = await window.api.grantVersions(order.slice(i, i + 25).map((g) => g.key))
-          if (live) setVersions((v) => ({ ...v, ...found }))
-        } catch {
-          return
-        }
-      }
-    })()
-    return () => {
-      live = false
-    }
-  }, [grants])
 
   const items = lists[tab] ?? null
   const visible = useMemo(() => {
@@ -254,7 +232,7 @@ export default function DownloadsPage({ config, auth, account, waiting, onLogin,
                   ) : (
                     visible.map((i) => {
                       const p = progress[i.key]
-                      const version = i.version ?? p?.version ?? versions[i.key] ?? null
+                      const version = i.version ?? p?.version ?? null
                       return (
                         <Row key={i.key} className={i.unavailable ? 'opacity-60' : undefined}>
                           <Checkbox checked={selected.has(i.key)} disabled={Boolean(i.unavailable) || running} onChange={() => toggle(i.key)} label={`Select ${i.name}`} />
@@ -265,7 +243,7 @@ export default function DownloadsPage({ config, auth, account, waiting, onLogin,
                             </span>
                             <span className="block truncate text-caption text-label-2">{i.unavailable ?? i.author ?? ' '}</span>
                           </span>
-                          <span className="w-16 shrink-0 truncate text-right font-mono text-footnote text-label-2 tabular-nums" title={version || i.unavailable || !granted || i.key in versions ? undefined : 'Reading from the portal'}>
+                          <span className="w-16 shrink-0 truncate text-right font-mono text-footnote text-label-2 tabular-nums" title={version || !granted ? undefined : 'Shown once it is downloaded'}>
                             {version ?? '—'}
                           </span>
                           <DateCell iso={i.updatedAt} />

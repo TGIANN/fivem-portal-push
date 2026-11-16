@@ -337,10 +337,6 @@ export const demoApi: Api = {
     entity === 'asset-grants'
       ? granted
       : scripts.map(([name, version], i) => ({ key: `assets:${assetFor(name).id}`, entity: 'assets', entityId: assetFor(name).id, name, author: null, version, updatedAt: days(i * 7 + 1), receivedAt: null, updated: false, unavailable: null })),
-  grantVersions: async (keys) => {
-    await new Promise((r) => setTimeout(r, 300))
-    return Object.fromEntries(keys.map((k) => [k, granted.find((g) => g.key === k)?.unavailable ? null : `${1 + (Number(k.slice(-1)) % 4)}.${Number(k.slice(-1)) % 3}.0`]))
-  },
   pickDownloadDir: async () => config,
   setDownloadExtract: async (on) => {
     config.downloadExtract = on

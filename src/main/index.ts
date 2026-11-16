@@ -10,7 +10,7 @@ import { pickPack, safeName } from './archive'
 import { browserLogin, cancelBrowserLogin, extensionDir } from './browserLogin'
 import { isInside, readBundle, toSource, writeBundle } from './bundle'
 import { runChecks } from './checks'
-import { grantVersions, listDownloadables, runDownloads } from './downloads'
+import { listDownloadables, runDownloads } from './downloads'
 import { folderProblem, runEncrypt } from './encrypt'
 import { changedFiles, gitRoot } from './git'
 import { scriptHistory } from './history'
@@ -250,10 +250,6 @@ handle('download:show', (path: string) => {
 handle('downloads:list', (entity: DownloadEntity) => {
   if (entity !== 'assets' && entity !== 'asset-grants') throw new Error('Unknown list')
   return listDownloadables(entity)
-})
-handle('downloads:versions', (keys: string[]) => {
-  if (!Array.isArray(keys) || keys.some((k) => typeof k !== 'string')) throw new Error('Bad list')
-  return grantVersions(keys)
 })
 handle('downloads:pickDir', async () => {
   const res = await dialog.showOpenDialog(win!, { title: 'Download assets to', properties: ['openDirectory', 'createDirectory'], defaultPath: getConfig().downloadDir ?? app.getPath('downloads') })
