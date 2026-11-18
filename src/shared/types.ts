@@ -50,9 +50,31 @@ export interface Downloadable {
   unavailable: string | null
 }
 
+/** A top-level name in a downloaded zip that is already in the download folder. */
+export interface DownloadConflict {
+  id: string
+  /** The name in the zip. */
+  name: string
+  /** How the entry already there is spelled. */
+  existing: string
+  /** The asset the zip came from. */
+  asset: string
+  /** The same asset unpacked that folder before, so replacing it is an update. */
+  sameAsset: boolean
+}
+
+export type ConflictChoice = 'replace' | 'skip'
+
+export interface DownloadResult {
+  done: number
+  failed: number
+  /** Downloaded, but every folder in it was skipped. */
+  skipped: number
+}
+
 export interface DownloadProgress {
   key: string
-  status: 'running' | 'done' | 'error'
+  status: 'running' | 'done' | 'skipped' | 'error'
   message?: string
   progress?: number
   /** The version being downloaded, once known. */

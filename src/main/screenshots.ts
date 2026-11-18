@@ -67,6 +67,10 @@ export async function takeScreenshots(win: BrowserWindow): Promise<void> {
   await click('button', 'Select updated')
   await click('main aside button', 'Download')
   await wait(2000)
+  // The demo finds two folders already there and asks once.
+  await click('[role="dialog"] button', 'Replace all')
+  await click('[role="dialog"] footer button', 'Replace')
+  await wait(600)
   await shot('screenshot-downloads.png')
 
   await click('nav button', 'Escrow')

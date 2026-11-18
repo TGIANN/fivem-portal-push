@@ -1,10 +1,11 @@
-import { faCheck, faCircleNotch, faCircleXmark, faDownload, faFolderOpen, faMagnifyingGlass, faRotate, faTriangleExclamation, faXmark } from '@fortawesome/free-solid-svg-icons'
+import { faCheck, faCircleNotch, faCircleXmark, faDownload, faFolderOpen, faForward, faMagnifyingGlass, faRotate, faTriangleExclamation, faXmark } from '@fortawesome/free-solid-svg-icons'
 import { FontAwesomeIcon } from '@fortawesome/react-fontawesome'
 import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import useLocalStorageState from 'use-local-storage-state'
-import type { AppConfig, AuthState, DownloadEntity, Downloadable } from '../../../shared/types'
+import type { AppConfig, AuthState, DownloadConflict, DownloadEntity, Downloadable } from '../../../shared/types'
 import { useDownloadProgress } from '@/hooks'
 import { cn, errorMessage, shortDate } from '@/lib'
+import ConflictDialog from './ConflictDialog'
 import LoginNotice from './LoginNotice'
 import { percent } from './PortalVersions'
 import Toolbar from './Toolbar'
@@ -48,8 +49,11 @@ export default function DownloadsPage({ config, auth, account, waiting, onLogin,
   const [running, setRunning] = useState(false)
   const [cancelling, setCancelling] = useState(false)
   const [result, setResult] = useState<{ ok: boolean; text: string } | null>(null)
+  const [conflicts, setConflicts] = useState<DownloadConflict[] | null>(null)
   const { progress, reset } = useDownloadProgress()
   const granted = tab === 'asset-grants'
+
+  useEffect(() => window.api.onDownloadConflicts(setConflicts), [])
   const sortBy: Sort = !granted && sort === 'received' ? 'updated' : sort
 
   const load = useCallback(
@@ -111,8 +115,9 @@ export default function DownloadsPage({ config, auth, account, waiting, onLogin,
     setResult(null)
     reset()
     try {
-      const { done, failed } = await window.api.startDownloads([...selected])
-      setResult(failed ? { ok: false, text: `${done} downloaded, ${failed} failed. Hover the red mark for the reason.` } : { ok: true, text: `${done} downloaded.` })
+      const { done, failed, skipped } = await window.api.startDownloads([...selected])
+      const text = [`${done} downloaded`, skipped && `${skipped} skipped`, failed && `${failed} failed`].filter(Boolean).join(', ')
+      setResult(failed ? { ok: false, text: `${text}. Hover the red mark for the reason.` } : { ok: true, text: `${text}.` })
       setSelected(new Set())
     } catch (e) {
       setResult({ ok: false, text: errorMessage(e) })
@@ -257,6 +262,12 @@ export default function DownloadsPage({ config, auth, account, waiting, onLogin,
                                   <FontAwesomeIcon icon={faCheck} />
                                 </span>
                               </Tooltip>
+                            ) : p?.status === 'skipped' ? (
+                              <Tooltip content={p.message ?? 'Skipped'}>
+                                <span className="text-label-2" aria-label={p.message ?? 'Skipped'}>
+                                  <FontAwesomeIcon icon={faForward} />
+                                </span>
+                              </Tooltip>
                             ) : p?.status === 'error' ? (
                               <Tooltip content={p.message ?? 'Failed'}>
                                 <span className="text-red" aria-label={p.message ?? 'Failed'}>
@@ -298,7 +309,7 @@ export default function DownloadsPage({ config, auth, account, waiting, onLogin,
                 </Group>
                 <p className="-mt-2.5 px-4 text-caption text-label-2">
                   {config.downloadExtract
-                    ? 'Each zip is unpacked here and then deleted. Only a folder the same asset unpacked before is replaced; anything else gets a (2) folder beside it.'
+                    ? 'Each zip is unpacked here and then deleted. When a folder is already there, you get one list at the end to pick what to replace and what to skip.'
                     : 'Saved as <name>-<version>.zip. A zip that is already there is kept, and the new one gets a (2) name.'}
                 </p>
 
@@ -330,6 +341,15 @@ export default function DownloadsPage({ config, auth, account, waiting, onLogin,
           )}
         </div>
       </div>
+      {conflicts && (
+        <ConflictDialog
+          conflicts={conflicts}
+          onDone={(choices) => {
+            setConflicts(null)
+            window.api.resolveConflicts(choices)
+          }}
+        />
+      )}
     </>
   )
 }

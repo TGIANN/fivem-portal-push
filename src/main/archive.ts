@@ -1,4 +1,5 @@
-import { createWriteStream, existsSync } from 'fs'
+import { randomUUID } from 'crypto'
+import { createWriteStream } from 'fs'
 import { mkdir, readFile, readdir, rename, rm, writeFile } from 'fs/promises'
 import { dirname, join, resolve } from 'path'
 import type { Readable } from 'stream'
@@ -77,37 +78,129 @@ async function readOwners(dir: string): Promise<Record<string, string>> {
   }
 }
 
+const writeOwners = (dir: string, owners: Record<string, string>): Promise<void> => writeFile(join(dir, ownersFile), JSON.stringify(owners, null, 2))
+
+/** Windows matches names without case, so the entry already there may be spelled differently. */
+async function onDisk(dir: string, name: string): Promise<string | undefined> {
+  const lower = name.toLowerCase()
+  return (await readdir(dir)).find((n) => n.toLowerCase() === lower)
+}
+
+/** Unpack folders a crashed or stopped run left behind. Only call it while no run is going. */
+export async function removeStaleTemps(dir: string): Promise<void> {
+  for (const name of await readdir(dir)) if (name.toLowerCase().startsWith(tempPrefix)) await rm(join(dir, name), { recursive: true, force: true }).catch(() => undefined)
+}
+
+export interface StagedConflict {
+  /** The top-level name in the zip. */
+  name: string
+  /** How the name already there is spelled. */
+  existing: string
+  /** The same asset unpacked that exact name before. */
+  sameAsset: boolean
+}
+
+/** A zip unpacked into a temp folder; the names in `conflicts` still wait there for the user. */
+export interface Staged {
+  temp: string
+  owner: string
+  placed: string[]
+  conflicts: StagedConflict[]
+}
+
 /**
  * Unpacks a zip into a folder under the zip's own top-level names, since a FiveM folder name is the
- * resource name. The zip comes from the asset's author, so only a name this asset unpacked before is
- * replaced; anything else already there stays, and the new entry gets a " (2)" name beside it.
+ * resource name. Every free name is moved in at once; a name already taken stays in the temp folder,
+ * and nothing there is touched until the user decides with `applyStaged`.
  */
-export async function extractInto(zipPath: string, dir: string, owner: string): Promise<string[]> {
-  const temp = join(dir, `${tempPrefix}${Date.now()}`)
+export async function stageInto(zipPath: string, dir: string, owner: string): Promise<Staged> {
+  const temp = join(dir, `${tempPrefix}${randomUUID()}`)
   try {
     await extractZip(zipPath, temp)
     const owners = await readOwners(dir)
     const placed: string[] = []
+    const conflicts: StagedConflict[] = []
     for (const name of await readdir(temp)) {
       // The app's own bookkeeping names are never taken from a zip.
       if (name.toLowerCase() === ownersFile || name.toLowerCase().startsWith(tempPrefix)) continue
-      let final = name
-      if (existsSync(join(dir, name))) {
-        // Windows matches names without case, so the folder there may be spelled differently;
-        // it is only replaced when it is exactly the name this asset placed.
-        const exact = (await readdir(dir)).includes(name)
-        if (exact && owners[name] === owner) await rm(join(dir, name), { recursive: true, force: true, maxRetries: 3 })
-        else for (let n = 2; existsSync(join(dir, final)); n++) final = `${name} (${n})`
+      const existing = await onDisk(dir, name)
+      if (existing) {
+        conflicts.push({ name, existing, sameAsset: existing === name && owners[name] === owner })
+        continue
       }
-      await rename(join(temp, name), join(dir, final))
-      owners[final] = owner
-      placed.push(final)
+      await rename(join(temp, name), join(dir, name))
+      owners[name] = owner
+      placed.push(name)
     }
-    await writeFile(join(dir, ownersFile), JSON.stringify(owners, null, 2))
-    return placed
-  } finally {
+    if (placed.length) await writeOwners(dir, owners)
+    if (!conflicts.length) await rm(temp, { recursive: true, force: true })
+    return { temp, owner, placed, conflicts }
+  } catch (e) {
     await rm(temp, { recursive: true, force: true })
+    throw e
   }
+}
+
+const errorText = (e: unknown): string => (e instanceof Error ? e.message : String(e))
+
+/** Puts the staged name in place of the entry already there. The old entry is moved aside first, so a failure puts it back. */
+async function replaceOne(staged: Staged, dir: string, name: string, owners: Record<string, string>): Promise<void> {
+  // An earlier choice in the same batch may have changed what is there.
+  const existing = await onDisk(dir, name)
+  // Not under tempPrefix: an old folder that could not be put back must survive the next run's sweep.
+  const aside = join(dir, `.portal-old-${randomUUID()}`)
+  if (existing) {
+    try {
+      await rename(join(dir, existing), aside)
+    } catch (e) {
+      throw new Error(`${existing} is in use, so it was kept. Stop the server and download again. (${errorText(e)})`)
+    }
+  }
+  try {
+    await rename(join(staged.temp, name), join(dir, name))
+  } catch (e) {
+    if (existing && !(await rename(aside, join(dir, existing)).then(() => true, () => false)))
+      throw new Error(`Could not put in ${name} or put the old one back (${errorText(e)}). The old folder is in ${aside}.`)
+    throw e
+  }
+  if (existing) {
+    delete owners[existing]
+    await rm(aside, { recursive: true, force: true, maxRetries: 3 }).catch(() => undefined)
+  }
+  owners[name] = staged.owner
+}
+
+/**
+ * Puts in the staged names `replace` picks and drops the rest. A name that fails is reported and the
+ * others still go on. The temp folder is always removed.
+ */
+export async function applyStaged(
+  staged: Staged,
+  dir: string,
+  replace: (c: StagedConflict) => boolean
+): Promise<{ placed: string[]; skipped: string[]; failed: string[] }> {
+  const placed: string[] = []
+  const skipped: string[] = []
+  const failed: string[] = []
+  const owners = await readOwners(dir)
+  try {
+    for (const c of staged.conflicts) {
+      if (!replace(c)) {
+        skipped.push(c.name)
+        continue
+      }
+      try {
+        await replaceOne(staged, dir, c.name, owners)
+        placed.push(c.name)
+      } catch (e) {
+        failed.push(errorText(e))
+      }
+    }
+  } finally {
+    if (placed.length) await writeOwners(dir, owners)
+    await rm(staged.temp, { recursive: true, force: true })
+  }
+  return { placed, skipped, failed }
 }
 
 /**

@@ -4,7 +4,7 @@ import { randomUUID } from 'crypto'
 import { existsSync, statSync } from 'fs'
 import { basename, dirname, join, resolve } from 'path'
 import { cleanBuildDirs } from '../shared/buildDirs'
-import type { BundleSpec, DownloadEntity, DownloadProgress, EncryptJob, PushRequest, SecretName, TebexPackage, UpdateImage, UpdatePost, UpdateSettings, UpdateTarget } from '../shared/types'
+import type { BundleSpec, ConflictChoice, DownloadConflict, DownloadEntity, DownloadProgress, EncryptJob, PushRequest, SecretName, TebexPackage, UpdateImage, UpdatePost, UpdateSettings, UpdateTarget } from '../shared/types'
 import { checkAppUpdate, downloadAppUpdate, getAppUpdate, installAppUpdate, startAppUpdates } from './appUpdate'
 import { pickPack, safeName } from './archive'
 import { browserLogin, cancelBrowserLogin, extensionDir } from './browserLogin'
@@ -270,13 +270,29 @@ handle('downloads:start', async (keys: string[]) => {
   cancelDownloads = false
   try {
     log('download', `bulk ${keys.length} items -> ${downloadDir} extract=${downloadExtract}`)
-    return await runDownloads(keys, downloadDir, downloadExtract, sendDownload, () => cancelDownloads)
+    return await runDownloads(keys, downloadDir, downloadExtract, sendDownload, () => cancelDownloads, askConflicts)
   } finally {
     downloading = false
+    answerConflicts = null
   }
 })
+// Taken folder names go to the window as one list; the run waits for the answer.
+let answerConflicts: ((choices: Record<string, ConflictChoice>) => void) | null = null
+const askConflicts = (conflicts: DownloadConflict[]): Promise<Record<string, ConflictChoice>> =>
+  new Promise((resolve) => {
+    answerConflicts = resolve
+    win?.webContents.send('download:conflicts', conflicts)
+  })
+const answer = (choices: Record<string, ConflictChoice>): void => {
+  const resolve = answerConflicts
+  answerConflicts = null
+  resolve?.(choices)
+}
+handle('downloads:resolve', (choices: Record<string, ConflictChoice>) => answer(choices && typeof choices === 'object' ? choices : {}))
 handle('downloads:cancel', () => {
   cancelDownloads = true
+  // Cancelling while the list is open skips every taken name.
+  answer({})
 })
 
 // ---------- Folder encryption ----------

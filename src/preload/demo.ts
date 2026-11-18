@@ -1,5 +1,5 @@
 import { cleanBuildDirs, defaultBuildDirs } from '../shared/buildDirs'
-import type { AppConfig, AppUpdateState, BundleItem, BundleSpec, ChangedFile, DiscordRole, Downloadable, DownloadProgress, EncryptProgress, EncryptStepId, TebexPackage, IgnoreRule, PortalAssetDetail, PushProgress, PushRecord, PushStepId, ScriptChecks, ScriptInfo, ZipEntry, ZipTree } from '../shared/types'
+import type { AppConfig, AppUpdateState, BundleItem, BundleSpec, ChangedFile, ConflictChoice, DiscordRole, DownloadConflict, Downloadable, DownloadProgress, EncryptProgress, EncryptStepId, TebexPackage, IgnoreRule, PortalAssetDetail, PushProgress, PushRecord, PushStepId, ScriptChecks, ScriptInfo, ZipEntry, ZipTree } from '../shared/types'
 import type { Api } from './index'
 
 const root = 'D:\\FiveM\\resources\\[tgiann]'
@@ -80,6 +80,8 @@ const granted: Downloadable[] = (
 const downloadListeners = new Set<(p: DownloadProgress) => void>()
 const emitDownload = (p: DownloadProgress) => downloadListeners.forEach((cb) => cb(p))
 let cancelDownloadDemo = false
+const conflictListeners = new Set<(c: DownloadConflict[]) => void>()
+let answerDemo: ((choices: Record<string, ConflictChoice>) => void) | null = null
 
 const encryptListeners = new Set<(p: EncryptProgress) => void>()
 let cancelEncryptDemo = false
@@ -346,23 +348,54 @@ export const demoApi: Api = {
   startDownloads: async (keys) => {
     cancelDownloadDemo = false
     let done = 0
+    let skipped = 0
+    // The first two unzipped downloads find their folder already there: one from an earlier download, one not.
+    const taken = config.downloadExtract ? keys.slice(0, 2) : []
     for (const key of keys) {
       if (cancelDownloadDemo) break
       for (const progress of [0.15, 0.45, 0.8]) {
         emitDownload({ key, status: 'running', progress })
         await wait(120)
       }
+      if (taken.includes(key)) {
+        emitDownload({ key, status: 'running', message: 'Waiting for your choice', version: '1.2.0' })
+        continue
+      }
       emitDownload({ key, status: 'done', message: config.downloadExtract ? 'Unpacked' : 'Saved', version: '1.2.0' })
       done++
     }
-    return { done, failed: 0 }
+    if (!taken.length) return { done, failed: 0, skipped }
+    const name = (key: string) => granted.find((g) => g.key === key)?.name ?? key
+    const choices = cancelDownloadDemo
+      ? {}
+      : await new Promise<Record<string, ConflictChoice>>((resolve) => {
+          answerDemo = resolve
+          conflictListeners.forEach((cb) => cb(taken.map((key, i) => ({ id: key, name: name(key), existing: name(key), asset: name(key), sameAsset: i === 0 }))))
+        })
+    for (const key of taken) {
+      const replaced = choices[key] === 'replace'
+      emitDownload({ key, status: replaced ? 'done' : 'skipped', message: replaced ? `Unpacked to ${name(key)}` : `Kept the ${name(key)} already there`, version: '1.2.0' })
+      if (replaced) done++
+      else skipped++
+    }
+    return { done, failed: 0, skipped }
   },
   cancelDownloads: async () => {
     cancelDownloadDemo = true
+    answerDemo?.({})
+    answerDemo = null
   },
   onDownloadProgress: (cb) => {
     downloadListeners.add(cb)
     return () => downloadListeners.delete(cb)
+  },
+  onDownloadConflicts: (cb) => {
+    conflictListeners.add(cb)
+    return () => conflictListeners.delete(cb)
+  },
+  resolveConflicts: async (choices) => {
+    answerDemo?.(choices)
+    answerDemo = null
   },
   addEncryptJob: async () => {
     config.encryptJobs = [...config.encryptJobs, { id: `demo-${Date.now()}`, source: '', target: '', assetId: null, assetName: null, lastRun: null }]

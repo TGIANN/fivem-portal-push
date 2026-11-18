@@ -2,9 +2,9 @@ import { randomUUID } from 'crypto'
 import { existsSync } from 'fs'
 import { rm } from 'fs/promises'
 import { join } from 'path'
-import type { DownloadEntity, DownloadProgress, Downloadable, PortalVersion } from '../shared/types'
+import type { ConflictChoice, DownloadConflict, DownloadEntity, DownloadProgress, DownloadResult, Downloadable, PortalVersion } from '../shared/types'
 import { pickVersion } from '../shared/version'
-import { extractInto, pickPack, safeName } from './archive'
+import { applyStaged, pickPack, removeStaleTemps, safeName, stageInto, type Staged } from './archive'
 import { assetDetail, fetchToFile, grantDetail, listCreatedAssets, listGrantedAssets, packDownloadUrl } from './portal'
 
 interface Listed {
@@ -77,7 +77,7 @@ async function fullVersions({ item, versions }: Listed): Promise<PortalVersion[]
   return versions ?? (await assetDetail(item.entityId)).versions
 }
 
-async function downloadOne(row: Listed, dir: string, claim: (name: string) => string, extract: boolean, emit: (p: DownloadProgress) => void, cancelled: () => boolean): Promise<string> {
+async function downloadOne(row: Listed, dir: string, claim: (name: string) => string, extract: boolean, emit: (p: DownloadProgress) => void, cancelled: () => boolean): Promise<string | Staged> {
   const { item } = row
   if (item.unavailable) throw new Error(item.unavailable)
   const version = pickVersion(await fullVersions(row))
@@ -93,18 +93,39 @@ async function downloadOne(row: Listed, dir: string, claim: (name: string) => st
   if (!extract) return `Saved ${zipPath.split(/[\\/]/).pop()}`
   emit({ key: item.key, status: 'running', message: 'Unpacking', version: label })
   try {
-    const names = await extractInto(zipPath, dir, item.key)
-    return `Unpacked to ${names.join(', ')}`
+    return await stageInto(zipPath, dir, item.key)
   } finally {
     await rm(zipPath, { force: true })
   }
 }
 
-/** Downloads one after another, so a long list does not hammer the portal. */
-export async function runDownloads(keys: string[], dir: string, extract: boolean, emit: (p: DownloadProgress) => void, cancelled: () => boolean): Promise<{ done: number; failed: number }> {
+const unpacked = (placed: string[], skipped: string[] = []): string =>
+  [placed.length ? `Unpacked to ${placed.join(', ')}` : '', skipped.length ? `Kept the ${skipped.join(', ')} already there` : ''].filter(Boolean).join('. ')
+
+interface Waiting {
+  key: string
+  version: string | undefined
+  staged: Staged
+}
+
+/**
+ * Downloads one after another, so a long list does not hammer the portal. Folders whose names are
+ * already taken wait until the end, when `ask` gets them all at once; a name without an answer is skipped.
+ */
+export async function runDownloads(
+  keys: string[],
+  dir: string,
+  extract: boolean,
+  emit: (p: DownloadProgress) => void,
+  cancelled: () => boolean,
+  ask: (conflicts: DownloadConflict[]) => Promise<Record<string, ConflictChoice>>
+): Promise<DownloadResult> {
   if (!existsSync(dir)) throw new Error(`${dir} does not exist. Pick the download folder again.`)
+  if (extract) await removeStaleTemps(dir)
   let done = 0
   let failed = 0
+  let skipped = 0
+  const waiting: Waiting[] = []
   // A zip never writes over a file that is already there, or over another one in the same batch.
   const used = new Set<string>()
   const claim = (base: string): string => {
@@ -124,13 +145,43 @@ export async function runDownloads(keys: string[], dir: string, extract: boolean
         if (p.version) version = p.version
         emit(p)
       }
-      const message = await downloadOne(row, dir, claim, extract, onProgress, cancelled)
-      emit({ key, status: 'done', message, version })
+      const result = await downloadOne(row, dir, claim, extract, onProgress, cancelled)
+      if (typeof result !== 'string' && result.conflicts.length) {
+        waiting.push({ key, version, staged: result })
+        emit({ key, status: 'running', message: 'Waiting for your choice', version })
+        continue
+      }
+      emit({ key, status: 'done', message: typeof result === 'string' ? result : unpacked(result.placed), version })
       done++
     } catch (e) {
       emit({ key, status: 'error', message: e instanceof Error ? e.message : String(e), version })
       failed++
     }
   }
-  return { done, failed }
+
+  if (!waiting.length) return { done, failed, skipped }
+  // Ids are made here, so an answer can only pick among the names this run staged.
+  const conflicts = waiting.flatMap((w, i) =>
+    w.staged.conflicts.map((c) => ({ id: `${i}:${c.name}`, name: c.name, existing: c.existing, asset: listed.get(w.key)?.item.name ?? w.key, sameAsset: c.sameAsset }))
+  )
+  const choices = cancelled() ? {} : await ask(conflicts)
+  for (const [i, { key, version, staged }] of waiting.entries()) {
+    try {
+      const { placed, skipped: kept, failed: errors } = await applyStaged(staged, dir, (c) => choices[`${i}:${c.name}`] === 'replace')
+      const all = [...staged.placed, ...placed]
+      const message = [unpacked(all, kept), ...errors].filter(Boolean).join('. ')
+      if (errors.length) {
+        emit({ key, status: 'error', message, version })
+        failed++
+        continue
+      }
+      emit({ key, status: all.length ? 'done' : 'skipped', message, version })
+      if (all.length) done++
+      else skipped++
+    } catch (e) {
+      emit({ key, status: 'error', message: e instanceof Error ? e.message : String(e), version })
+      failed++
+    }
+  }
+  return { done, failed, skipped }
 }
