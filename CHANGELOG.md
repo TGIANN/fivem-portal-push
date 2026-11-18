@@ -2,6 +2,13 @@
 
 All notable changes to FiveM Portal Push. Versions follow [semantic versioning](https://semver.org/); the newest is on top.
 
+## [1.5.0](https://github.com/TGIANN/fivem-portal-push/compare/v1.4.1...v1.5.0) (2026-11-18)
+
+
+### New Features
+
+* ask once per batch which taken folders to replace or skip when unzipping downloads ([bc06d75](https://github.com/TGIANN/fivem-portal-push/commit/bc06d75c3e38132db9051651c207e538a6bf147e))
+
 ## [1.4.1](https://github.com/TGIANN/fivem-portal-push/compare/v1.4.0...v1.4.1) (2026-11-16)
 
 
